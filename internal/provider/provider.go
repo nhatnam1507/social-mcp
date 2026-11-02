@@ -193,6 +193,20 @@ func BoolOption(opts map[string]any, name string, def bool) bool {
 	return def
 }
 
+// MIMEType returns the media type for a container format.
+func MIMEType(container string) string {
+	switch container {
+	case FormatMOV:
+		return "video/quicktime"
+	case FormatWebM:
+		return "video/webm"
+	case FormatMKV:
+		return "video/x-matroska"
+	default:
+		return "video/mp4"
+	}
+}
+
 // PhaseAtLeast reports whether phase has reached min in the phase order.
 func PhaseAtLeast(phase, min string) bool {
 	return phaseRank(phase) >= phaseRank(min)
