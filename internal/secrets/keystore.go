@@ -195,6 +195,27 @@ func keyringUser(home string) string {
 	return "master-key-" + hex.EncodeToString(sum[:])[:12]
 }
 
+// EnvKeyring disables the OS keyring when set to "off", so new homes use the key file.
+const EnvKeyring = "SOCIAL_MCP_KEYRING"
+
+// KeyringFromEnv returns the OS keyring unless SOCIAL_MCP_KEYRING=off.
+func KeyringFromEnv() Keyring {
+	if os.Getenv(EnvKeyring) == "off" {
+		return disabledKeyring{}
+	}
+	return OSKeyring{}
+}
+
+type disabledKeyring struct{}
+
+func (disabledKeyring) Get(string, string) (string, error) {
+	return "", fmt.Errorf("%w: disabled by %s=off", ErrKeyringUnavailable, EnvKeyring)
+}
+
+func (disabledKeyring) Set(string, string, string) error {
+	return fmt.Errorf("%w: disabled by %s=off", ErrKeyringUnavailable, EnvKeyring)
+}
+
 // OSKeyring is the real keyring with a timeout, since Secret Service calls can hang.
 type OSKeyring struct {
 	Timeout time.Duration
