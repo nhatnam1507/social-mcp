@@ -36,8 +36,23 @@ func LoadOrCreate(path string) (string, error) {
 	}
 	defer os.Remove(tmp)
 	// Link fails if another process created the file first; either way, the file is the truth.
-	if err := os.Link(tmp, path); err != nil && !errors.Is(err, os.ErrExist) {
-		return "", err
+	err = os.Link(tmp, path)
+	if err != nil && !errors.Is(err, os.ErrExist) {
+		// No hard links here (FAT, some network mounts): create exclusively instead.
+		data, rerr := os.ReadFile(tmp)
+		if rerr != nil {
+			return "", rerr
+		}
+		f, cerr := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		switch {
+		case cerr == nil:
+			_, werr := f.Write(data)
+			if err := errors.Join(werr, f.Close()); err != nil {
+				return "", err
+			}
+		case !errors.Is(cerr, os.ErrExist):
+			return "", cerr
+		}
 	}
 	return Load(path)
 }

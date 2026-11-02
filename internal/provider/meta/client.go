@@ -133,9 +133,10 @@ func (c *Client) PostForm(ctx context.Context, base, path string, form url.Value
 	return c.do(req, token, out)
 }
 
-// PostMultipart calls POST base+path with form fields and one file part of size bytes,
-// streaming the file instead of buffering it.
-func (c *Client) PostMultipart(ctx context.Context, base, path string, fields map[string]string, fileField string, file io.Reader, size int64, token string, out any) error {
+// PostMultipart calls POST base+path with form fields and one file part holding size bytes
+// of file starting at offset. The file is streamed, and the body can be rebuilt so the
+// transport may retry a request that never reached the server.
+func (c *Client) PostMultipart(ctx context.Context, base, path string, fields map[string]string, fileField string, file io.ReaderAt, offset, size int64, token string, out any) error {
 	var head bytes.Buffer
 	mw := multipart.NewWriter(&head)
 	for k, v := range fields {
@@ -147,11 +148,14 @@ func (c *Client) PostMultipart(ctx context.Context, base, path string, fields ma
 		return err
 	}
 	tail := "\r\n--" + mw.Boundary() + "--\r\n"
-	body := io.MultiReader(bytes.NewReader(head.Bytes()), io.LimitReader(file, size), strings.NewReader(tail))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, body)
+	newBody := func() io.ReadCloser {
+		return io.NopCloser(io.MultiReader(bytes.NewReader(head.Bytes()), io.NewSectionReader(file, offset, size), strings.NewReader(tail)))
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, newBody())
 	if err != nil {
 		return err
 	}
+	req.GetBody = func() (io.ReadCloser, error) { return newBody(), nil }
 	req.ContentLength = int64(head.Len()) + size + int64(len(tail))
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	return c.do(req, token, out)

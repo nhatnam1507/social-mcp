@@ -368,10 +368,14 @@ func (r *Runner) finish(ctx context.Context, job store.Upload, st *attemptState,
 		msg := logx.Error(err)
 		note := "The upload may or may not have been published. Check the platform before uploading again."
 		f.Error, f.Note = &msg, &note
-	case errors.As(err, &rl) && time.Since(job.CreatedAt) > maxRateLimited:
+	case errors.As(err, &rl) && !job.RateLimitedSince.IsZero() && time.Since(job.RateLimitedSince) > maxRateLimited:
 		msg := "still rate limited after " + maxRateLimited.String() + ": " + logx.Error(err)
 		f.Error = &msg
 	case errors.As(err, &rl):
+		if job.RateLimitedSince.IsZero() {
+			since := time.Now()
+			f.RateLimitedSince = &since
+		}
 		to = store.StatusQueued
 		delay := rl.RetryAfter
 		if delay <= 0 {
@@ -384,6 +388,8 @@ func (r *Runner) finish(ctx context.Context, job store.Upload, st *attemptState,
 		msg := logx.Error(err)
 		f.Error = &msg
 	default:
+		var cleared time.Time // a non-rate-limit outcome ends the rate-limit streak
+		f.RateLimitedSince = &cleared
 		attempts := job.Attempts + 1
 		msg := logx.Error(err)
 		f.Attempts, f.Error = &attempts, &msg

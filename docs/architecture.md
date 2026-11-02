@@ -108,10 +108,11 @@ How it works:
   detached and breaks away from the terminal's job when allowed.
 - **Stop:** `daemon stop` asks the daemon to shut down, then waits for the lock to be released before
   reporting that it stopped.
-- **Long paths:** when `home/daemon.sock` would exceed the AF_UNIX path limit, the socket goes in
-  `$XDG_RUNTIME_DIR` on Linux, or in a per-user `0700` folder under the system temp directory, named after a
-  hash of the home path. The CLI checks that the socket belongs to the current user before using it.
+- **Long paths:** when `home/daemon.sock` would exceed the AF_UNIX path limit, the socket goes in a per-user
+  folder under the system temp directory (`social-mcp-<uid>` with mode `0700` on Unix, `social-mcp-<SID>` on
+  Windows), named after a hash of the home path. On Unix the CLI checks that the socket belongs to the current
+  user before using it.
 - **Status:** `daemon status` checks the process lock as well as the socket, so a daemon whose socket was
   removed is reported as running but unreachable (exit code 4), not as stopped. `daemon stop` then terminates
-  it directly.
+  it directly, escalating to a hard kill if the process ignores the termination signal.
 - **Logs:** `daemon.log` is rotated to `daemon.log.1` at startup once it exceeds 10 MB.

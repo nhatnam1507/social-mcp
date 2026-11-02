@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 )
 
 // EnvHome overrides the home directory.
@@ -63,8 +62,7 @@ func PID(home string) string { return filepath.Join(home, "daemon.pid") }
 func Log(home string) string { return filepath.Join(home, "daemon.log") }
 
 // SocketPath returns the control socket path: home/daemon.sock, or, when that would exceed
-// AF_UNIX path limits, a short path in a directory private to the current user
-// ($XDG_RUNTIME_DIR on Linux, otherwise a per-user directory under the system temp dir).
+// AF_UNIX path limits, a short path in a per-user directory under the system temp dir.
 func SocketPath(home string) string {
 	p := filepath.Join(home, "daemon.sock")
 	if len(p) <= maxSocketPath {
@@ -74,10 +72,9 @@ func SocketPath(home string) string {
 	return filepath.Join(socketDir(), "social-mcp-"+hex.EncodeToString(sum[:])[:12]+".sock")
 }
 
+// socketDir is derived only from the user identity, never from environment variables such as
+// XDG_RUNTIME_DIR that differ between shells, cron and service managers.
 func socketDir() string {
-	if d := os.Getenv("XDG_RUNTIME_DIR"); runtime.GOOS == "linux" && filepath.IsAbs(d) {
-		return d
-	}
 	return filepath.Join(os.TempDir(), privateDirName())
 }
 

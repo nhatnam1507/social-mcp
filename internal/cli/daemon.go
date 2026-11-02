@@ -171,8 +171,8 @@ func daemonRunCmd(version string) *cobra.Command {
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 			go func() {
-				// After the first signal, restore default handling so a second one (or the
-				// SIGTERM sent by `daemon stop` after its timeout) ends a stuck shutdown.
+				// After the first signal, restore default handling so a second Ctrl+C ends a
+				// stuck shutdown. (`daemon stop` escalates to SIGKILL on its own.)
 				<-ctx.Done()
 				stop()
 			}()
@@ -190,7 +190,7 @@ func daemonRunCmd(version string) *cobra.Command {
 }
 
 func tailFile(ctx context.Context, w io.Writer, path string, lines int, follow bool) error {
-	data, err := daemon.ReadTail(path, 4<<20)
+	data, end, err := daemon.ReadTail(path, 4<<20)
 	if errors.Is(err, os.ErrNotExist) && !follow {
 		fmt.Fprintf(w, "no log yet at %s\n", path)
 		return nil
@@ -207,10 +207,7 @@ func tailFile(ctx context.Context, w io.Writer, path string, lines int, follow b
 	if !follow {
 		return nil
 	}
-	offset := int64(0)
-	if fi, err := os.Stat(path); err == nil {
-		offset = fi.Size()
-	}
+	offset := end
 	if ctx == nil {
 		ctx = context.Background()
 	}

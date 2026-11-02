@@ -35,6 +35,9 @@ func startDetached(cmd *exec.Cmd) error {
 	return err
 }
 
+// signalKill is the same as signalTerminate: Process.Kill already ends the process.
+func signalKill(pid int) error { return signalTerminate(pid) }
+
 func signalTerminate(pid int) error {
 	p, err := os.FindProcess(pid)
 	if err != nil {

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -51,18 +52,18 @@ func TestBackupBeforeMigratingPopulatedDB(t *testing.T) {
 	}
 	s.Close()
 
-	withV2 := append(append([]migration{}, migrations...), migration{name: "0002_test.sql", sql: "CREATE TABLE extra(x INTEGER);"})
+	withNext := append(append([]migration{}, migrations...), migration{name: "9999_test.sql", sql: "CREATE TABLE extra(x INTEGER);"})
 	for i := 0; i < 6; i++ {
-		// Reset to v1 each round so every open applies v2 and backs up first.
+		// Reset to the shipped version each round so every open applies the test migration and backs up first.
 		s, err = openWith(path, migrations)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.w.Exec("DROP TABLE IF EXISTS extra; PRAGMA user_version = 1"); err != nil {
+		if _, err := s.w.Exec(fmt.Sprintf("DROP TABLE IF EXISTS extra; PRAGMA user_version = %d", len(migrations))); err != nil {
 			t.Fatal(err)
 		}
 		s.Close()
-		s, err = openWith(path, withV2)
+		s, err = openWith(path, withNext)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -274,5 +275,33 @@ func TestMarkStatusIgnoresStaleVersion(t *testing.T) {
 	}
 	if got, _ := s.GetAccount(acc.ID); got.Status != StatusOK {
 		t.Fatalf("stale account mark applied: %s", got.Status)
+	}
+}
+
+func TestUpgradeFromV1BacksUpAndAddsColumn(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.db")
+	s, err := openWith(path, migrations[:1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Seed a job with the v1 schema directly; current code already expects later columns.
+	if _, err := s.w.Exec(`INSERT INTO uploads(id, account_id, platform, file_path, file_size, container, status, phase, created_at, updated_at)
+		VALUES('job_v1', 'acc_v1', 'youtube', '/v.mp4', 1, 'mp4', 'queued', 'pending', 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	u := Upload{ID: "job_v1"}
+	s, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	got, err := s.GetUpload(u.ID)
+	if err != nil || !got.RateLimitedSince.IsZero() {
+		t.Fatalf("upgraded row: %+v %v", got, err)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(dir, "backups")); len(entries) != 1 {
+		t.Fatalf("backups before upgrade = %d, want 1", len(entries))
 	}
 }

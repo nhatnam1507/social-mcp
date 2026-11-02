@@ -86,6 +86,16 @@ func Stop(home string, timeout time.Duration) (forced bool, err error) {
 	if err := signalTerminate(pid); err != nil {
 		return false, fmt.Errorf("terminate daemon pid %d: %w", pid, err)
 	}
+	if waitUnlocked(home, 5*time.Second) {
+		return true, nil
+	}
+	// SIGTERM can be swallowed by a daemon already inside a stuck shutdown; the lock is still
+	// held by this pid, so end it.
+	if locked(home) {
+		if err := signalKill(pid); err != nil {
+			return true, fmt.Errorf("kill daemon pid %d: %w", pid, err)
+		}
+	}
 	if !waitUnlocked(home, 5*time.Second) {
 		return true, fmt.Errorf("daemon pid %d is still running", pid)
 	}
@@ -143,7 +153,7 @@ func readPID(path string) (int, error) {
 }
 
 func tail(path string, n int) string {
-	b, err := ReadTail(path, 64<<10)
+	b, _, err := ReadTail(path, 64<<10)
 	if err != nil {
 		return ""
 	}
@@ -154,22 +164,22 @@ func tail(path string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-// ReadTail returns at most the last limit bytes of path.
-func ReadTail(path string, limit int64) ([]byte, error) {
+// ReadTail returns at most the last limit bytes of path and the file size they end at.
+func ReadTail(path string, limit int64) ([]byte, int64, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer f.Close()
 	fi, err := f.Stat()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	start := max(fi.Size()-limit, 0)
 	buf := make([]byte, fi.Size()-start)
 	_, err = f.ReadAt(buf, start)
 	if err != nil && !errors.Is(err, io.EOF) {
-		return nil, err
+		return nil, 0, err
 	}
-	return buf, nil
+	return buf, fi.Size(), nil
 }

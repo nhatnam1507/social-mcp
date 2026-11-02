@@ -31,6 +31,7 @@ type fakeIG struct {
 	status       string // container status after upload
 	quotaUsed    int
 	losePublish  bool
+	throttle     int   // answer media_publish with a rate limit this many times
 	failUploadAt int64 // stop accepting after this many bytes (simulate interruption)
 	lastCaption  string
 }
@@ -89,6 +90,12 @@ func (f *fakeIG) server(t *testing.T) *httptest.Server {
 			}
 			fmt.Fprintf(w, `{"status_code":%q,"video_status":{"uploading_phase":{"status":"in_progress","bytes_transferred":%d}}}`, st, f.received.Len())
 		case r.URL.Path == "/graph/ig1/media_publish":
+			if f.throttle > 0 {
+				f.throttle--
+				w.WriteHeader(400)
+				fmt.Fprint(w, `{"error":{"code":80002,"message":"Instagram rate limit"}}`)
+				return
+			}
 			f.publishes++
 			f.status = "PUBLISHED"
 			if f.losePublish {
@@ -261,5 +268,26 @@ func TestPublishedContainerBeforeCommitIsUnknown(t *testing.T) {
 	rec := &recorder{phase: provider.PhaseTransferring, resume: json.RawMessage(`{"container_id":"c1"}`)}
 	if _, err := p.Upload(context.Background(), req(data, rec), rec.progress); !errors.Is(err, provider.ErrOutcomeUnknown) || f.publishes != 0 {
 		t.Fatalf("err %v publishes %d", err, f.publishes)
+	}
+}
+
+func TestThrottledPublishIsRetriedOnce(t *testing.T) {
+	f := &fakeIG{throttle: 1}
+	p := testProvider(f.server(t))
+	data := []byte("reel")
+	rec := &recorder{}
+	_, err := p.Upload(context.Background(), req(data, rec), rec.progress)
+	var rl *provider.RateLimitError
+	if !errors.As(err, &rl) || f.publishes != 0 || rec.phase != provider.PhaseCommitting {
+		t.Fatalf("first attempt: err=%v publishes=%d phase=%s", err, f.publishes, rec.phase)
+	}
+	res, err := p.Upload(context.Background(), req(data, rec), rec.progress)
+	if err != nil || res.RemoteID != "m1" || f.publishes != 1 {
+		t.Fatalf("retry: %+v %v publishes=%d", res, err, f.publishes)
+	}
+	var st resumeState
+	json.Unmarshal(rec.resume, &st)
+	if st.PublishRejected {
+		t.Fatal("publish_rejected flag not cleared before publishing")
 	}
 }

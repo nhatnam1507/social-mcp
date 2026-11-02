@@ -90,10 +90,8 @@ func TestSocketPathFallsBackWhenTooLong(t *testing.T) {
 	if filepath.Dir(got) != socketDir() || len(got) > maxSocketPath+10 {
 		t.Fatalf("long home socket %q not in the private socket dir %q", got, socketDir())
 	}
-	if runtime.GOOS != "linux" || os.Getenv("XDG_RUNTIME_DIR") == "" {
-		if !strings.HasPrefix(filepath.Base(socketDir()), "social-mcp") {
-			t.Fatalf("socket dir %q is not private", socketDir())
-		}
+	if !strings.HasPrefix(filepath.Base(socketDir()), "social-mcp-") {
+		t.Fatalf("socket dir %q is not per-user", socketDir())
 	}
 	if !strings.HasPrefix(filepath.Base(got), "social-mcp-") || got == SocketPath(long+"y") {
 		t.Fatalf("unexpected fallback socket name %q", got)

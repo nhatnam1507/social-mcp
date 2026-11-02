@@ -51,23 +51,26 @@ type Upload struct {
 	ResumeState     json.RawMessage
 	Attempts        int
 	NotBefore       time.Time
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	// RateLimitedSince is when the current run of rate limits began (zero when not limited).
+	RateLimitedSince time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // UploadFields lists optional columns to set during a transition. Nil means unchanged;
 // a zero NotBefore clears it.
 type UploadFields struct {
-	Phase       *string
-	BytesSent   *int64
-	RemoteID    *string
-	RemoteURL   *string
-	Outcome     *string
-	Note        *string
-	Error       *string
-	ResumeState *json.RawMessage
-	Attempts    *int
-	NotBefore   *time.Time
+	Phase            *string
+	BytesSent        *int64
+	RemoteID         *string
+	RemoteURL        *string
+	Outcome          *string
+	Note             *string
+	Error            *string
+	ResumeState      *json.RawMessage
+	Attempts         *int
+	NotBefore        *time.Time
+	RateLimitedSince *time.Time
 }
 
 // UploadFilter narrows ListUploads.
@@ -78,15 +81,15 @@ type UploadFilter struct {
 }
 
 const uploadCols = `id, account_id, platform, file_path, file_size, file_mtime, file_fingerprint, container, request, status, phase,
-	bytes_sent, remote_id, remote_url, outcome, note, error, resume_state, attempts, not_before, created_at, updated_at`
+	bytes_sent, remote_id, remote_url, outcome, note, error, resume_state, attempts, not_before, rate_limited_since, created_at, updated_at`
 
 func scanUpload(r rowScanner) (Upload, error) {
 	var u Upload
 	var mtime, created, updated int64
-	var nb sql.NullInt64
+	var nb, rls sql.NullInt64
 	var req, resume string
 	err := r.Scan(&u.ID, &u.AccountID, &u.Platform, &u.FilePath, &u.FileSize, &mtime, &u.FileFingerprint, &u.Container, &req,
-		&u.Status, &u.Phase, &u.BytesSent, &u.RemoteID, &u.RemoteURL, &u.Outcome, &u.Note, &u.Error, &resume, &u.Attempts, &nb, &created, &updated)
+		&u.Status, &u.Phase, &u.BytesSent, &u.RemoteID, &u.RemoteURL, &u.Outcome, &u.Note, &u.Error, &resume, &u.Attempts, &nb, &rls, &created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return u, ErrNotFound
 	}
@@ -97,7 +100,7 @@ func scanUpload(r rowScanner) (Upload, error) {
 	if resume != "" {
 		u.ResumeState = json.RawMessage(resume)
 	}
-	u.NotBefore = fromMs(nb)
+	u.NotBefore, u.RateLimitedSince = fromMs(nb), fromMs(rls)
 	u.CreatedAt, u.UpdatedAt = time.UnixMilli(created), time.UnixMilli(updated)
 	return u, err
 }
@@ -230,6 +233,9 @@ func (s *Store) TransitionUpload(id, from, to string, f UploadFields) (bool, err
 	}
 	if f.NotBefore != nil {
 		add("not_before", ms(*f.NotBefore))
+	}
+	if f.RateLimitedSince != nil {
+		add("rate_limited_since", ms(*f.RateLimitedSince))
 	}
 	res, err := s.w.Exec("UPDATE uploads SET "+strings.Join(set, ", ")+" WHERE id = ? AND status = ?", append(args, id, from)...)
 	if err != nil {

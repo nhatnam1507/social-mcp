@@ -407,3 +407,23 @@ func TestCancelRefusedForRequeuedCommittingJob(t *testing.T) {
 		t.Fatalf("status %s", u.Status)
 	}
 }
+
+func TestRateLimitCapCountsFromFirstLimit(t *testing.T) {
+	h := newHarness(t, "youtube")
+	h.env.Fake("youtube").UploadFunc = func(ctx context.Context, call int, req provider.UploadRequest, p provider.Progress) (provider.Result, error) {
+		if call == 1 {
+			return provider.Result{}, &provider.RateLimitError{RetryAfter: time.Millisecond, Msg: "slow"}
+		}
+		return provider.Result{RemoteID: "ok", Outcome: provider.OutcomePublished}, nil
+	}
+	_, acc := h.env.AddAccount(enginetest.AccountSpec{Platform: "youtube", ExternalID: "ch1", Refreshable: true})
+	id := h.submit(t, acc.ID)[0]
+	// The job has been queued for days, but this is its first rate limit: it must be retried.
+	if _, err := h.env.Store.TransitionUpload(id, store.StatusQueued, store.StatusQueued, store.UploadFields{}); err != nil {
+		t.Fatal(err)
+	}
+	h.start(t)
+	if u := waitStatus(t, h.env.Store, id, store.StatusSucceeded, store.StatusFailed); u.Status != store.StatusSucceeded {
+		t.Fatalf("status=%s error=%q", u.Status, u.Error)
+	}
+}

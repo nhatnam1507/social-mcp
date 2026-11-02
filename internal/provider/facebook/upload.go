@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"strconv"
 
@@ -61,7 +60,7 @@ func (p *Provider) Upload(ctx context.Context, req provider.UploadRequest, progr
 			"upload_phase":      "transfer",
 			"upload_session_id": st.UploadSessionID,
 			"start_offset":      strconv.FormatInt(offset, 10),
-		}, "video_file_chunk", io.NewSectionReader(req.File, offset, end-offset), end-offset, token, &next)
+		}, "video_file_chunk", req.File, offset, end-offset, token, &next)
 		if err != nil {
 			return provider.Result{}, err
 		}

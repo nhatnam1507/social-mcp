@@ -16,6 +16,9 @@ import (
 
 type resumeState struct {
 	ContainerID string `json:"container_id"`
+	// PublishRejected records that media_publish was refused with a rate limit, so the
+	// container is known to be unpublished and may be published on the next attempt.
+	PublishRejected bool `json:"publish_rejected,omitempty"`
 }
 
 type containerStatus struct {
@@ -29,15 +32,15 @@ type containerStatus struct {
 }
 
 // Upload creates a resumable Reels container, uploads the file, waits for processing and
-// publishes. media_publish is the commit step: after PhaseCommitting it is only repeated if
-// the container is confirmed unpublished.
+// publishes. media_publish is the commit step: after PhaseCommitting it is only repeated when
+// the previous call was refused with a rate limit (so nothing was published).
 func (p *Provider) Upload(ctx context.Context, req provider.UploadRequest, progress provider.Progress) (provider.Result, error) {
 	var st resumeState
 	if len(req.Resume) > 0 {
 		json.Unmarshal(req.Resume, &st)
 	}
 	if provider.PhaseAtLeast(req.Phase, provider.PhaseCommitting) {
-		return p.reconcile(ctx, req, st.ContainerID)
+		return p.reconcile(ctx, req, st, progress)
 	}
 
 	offset := int64(0)
@@ -82,7 +85,7 @@ func (p *Provider) Upload(ctx context.Context, req provider.UploadRequest, progr
 	if err := progress(provider.ProgressUpdate{BytesSent: req.FileSize, Phase: provider.PhaseCommitting, Resume: mustJSON(st)}); err != nil {
 		return provider.Result{}, err
 	}
-	return p.publish(ctx, req, st.ContainerID)
+	return p.publish(ctx, req, st, progress)
 }
 
 func (p *Provider) checkQuota(ctx context.Context, req provider.UploadRequest) error {
@@ -190,33 +193,50 @@ func (p *Provider) waitFinished(ctx context.Context, req provider.UploadRequest,
 	}
 }
 
-func (p *Provider) publish(ctx context.Context, req provider.UploadRequest, containerID string) (provider.Result, error) {
+func (p *Provider) publish(ctx context.Context, req provider.UploadRequest, st resumeState, progress provider.Progress) (provider.Result, error) {
 	var out struct {
 		ID string `json:"id"`
 	}
-	err := p.Meta.PostForm(ctx, p.Meta.GraphBase, "/"+req.AccountExternalID+"/media_publish", url.Values{"creation_id": {containerID}}, req.Token.AccessToken, &out)
-	if err != nil {
-		if provider.IsPermanent(err) || errors.Is(err, provider.ErrReauthRequired) || ctx.Err() != nil {
-			return provider.Result{}, err
+	err := p.Meta.PostForm(ctx, p.Meta.GraphBase, "/"+req.AccountExternalID+"/media_publish", url.Values{"creation_id": {st.ContainerID}}, req.Token.AccessToken, &out)
+	var rl *provider.RateLimitError
+	switch {
+	case err == nil:
+		return p.finish(ctx, req, out.ID)
+	case errors.As(err, &rl):
+		// Refused outright: nothing was published. Record that so the retry may publish.
+		st.PublishRejected = true
+		if perr := progress(provider.ProgressUpdate{Phase: provider.PhaseCommitting, Resume: mustJSON(st)}); perr != nil {
+			return provider.Result{}, perr
 		}
-		return p.reconcile(ctx, req, containerID)
+		return provider.Result{}, err
+	case provider.IsPermanent(err) || errors.Is(err, provider.ErrReauthRequired) || ctx.Err() != nil:
+		return provider.Result{}, err
 	}
-	return p.finish(ctx, req, out.ID)
+	st.PublishRejected = false
+	return p.reconcile(ctx, req, st, nil)
 }
 
-// reconcile decides the outcome of a container whose publish may have happened. Only a
-// PUBLISHED container counts as success; a FINISHED one is not re-published, because the
-// status may lag behind a publish whose response was lost.
-func (p *Provider) reconcile(ctx context.Context, req provider.UploadRequest, containerID string) (provider.Result, error) {
-	if containerID == "" {
+// reconcile decides the outcome of a container whose publish may have happened. A PUBLISHED
+// container is success. A FINISHED one is published only when the last publish call was
+// refused with a rate limit; otherwise the status may lag behind a publish whose response was
+// lost, so the outcome is unknown.
+func (p *Provider) reconcile(ctx context.Context, req provider.UploadRequest, st resumeState, progress provider.Progress) (provider.Result, error) {
+	if st.ContainerID == "" {
 		return provider.Result{}, provider.OutcomeUnknown("no Instagram container recorded for a committing job")
 	}
-	s, err := p.status(ctx, req, containerID)
+	s, err := p.status(ctx, req, st.ContainerID)
 	switch {
 	case err == nil && s.StatusCode == "PUBLISHED":
 		return p.finish(ctx, req, "")
+	case err == nil && s.StatusCode == "FINISHED" && st.PublishRejected && progress != nil:
+		// Clear the flag before publishing, so a lost response cannot lead to a second publish.
+		st.PublishRejected = false
+		if perr := progress(provider.ProgressUpdate{Phase: provider.PhaseCommitting, Resume: mustJSON(st)}); perr != nil {
+			return provider.Result{}, perr
+		}
+		return p.publish(ctx, req, st, progress)
 	}
-	return provider.Result{}, provider.OutcomeUnknown("could not confirm whether Instagram published container %s; check the profile", containerID)
+	return provider.Result{}, provider.OutcomeUnknown("could not confirm whether Instagram published container %s; check the profile", st.ContainerID)
 }
 
 func (p *Provider) finish(ctx context.Context, req provider.UploadRequest, mediaID string) (provider.Result, error) {
