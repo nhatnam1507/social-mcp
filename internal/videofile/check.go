@@ -11,8 +11,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"time"
 
 	"github.com/nhatnam1507/social-mcp/internal/provider"
@@ -47,6 +45,9 @@ func Check(path string, allowedDirs []string) (Info, error) {
 	if err := checkAllowed(resolved, allowedDirs); err != nil {
 		return Info{}, err
 	}
+	if err := requireRegular(resolved); err != nil {
+		return Info{}, err
+	}
 	f, err := os.Open(resolved)
 	if err != nil {
 		return Info{}, err
@@ -63,6 +64,9 @@ func Open(info Info, allowedDirs []string) (*os.File, error) {
 		return nil, provider.Permanent("video file is no longer accessible: %v", err)
 	}
 	if err := checkAllowed(resolved, allowedDirs); err != nil {
+		return nil, provider.Permanent("%v", err)
+	}
+	if err := requireRegular(resolved); err != nil {
 		return nil, provider.Permanent("%v", err)
 	}
 	f, err := os.Open(resolved)
@@ -163,28 +167,48 @@ func fingerprint(f io.ReaderAt, size int64) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// requireRegular rejects FIFOs, devices and directories before opening, since opening a
+// FIFO blocks until a writer appears.
+func requireRegular(path string) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !fi.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file", path)
+	}
+	return nil
+}
+
 func checkAllowed(resolved string, allowedDirs []string) error {
 	if len(allowedDirs) == 0 {
 		return nil
 	}
 	for _, d := range allowedDirs {
-		rd, err := filepath.EvalSymlinks(d)
-		if err != nil {
+		dir, err := os.Stat(d)
+		if err != nil || !dir.IsDir() {
 			continue
 		}
-		if within(resolved, rd) {
+		if within(resolved, dir) {
 			return nil
 		}
 	}
 	return fmt.Errorf("%s is outside uploads.allowed_dirs", resolved)
 }
 
-func within(path, dir string) bool {
-	if runtime.GOOS == "windows" {
-		path, dir = strings.ToLower(path), strings.ToLower(dir)
+// within reports whether path lies below dir. It compares directory identity rather than
+// spelling, so it is correct on case-insensitive filesystems (Windows, default macOS).
+func within(path string, dir os.FileInfo) bool {
+	for p := filepath.Dir(path); ; {
+		if fi, err := os.Stat(p); err == nil && os.SameFile(fi, dir) {
+			return true
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return false
+		}
+		p = parent
 	}
-	rel, err := filepath.Rel(dir, path)
-	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
 func contains(list []string, v string) bool {

@@ -70,6 +70,9 @@ func LoadKey(home string, kr Keyring, meta MetaStore) (Key, error) {
 	switch backend {
 	case BackendKeyring:
 		v, err := kr.Get(keyringService, keyringUser(home))
+		if errors.Is(err, ErrKeyringNotFound) {
+			return Key{}, fmt.Errorf("the OS keyring has no master key for home %s, but its database holds sealed tokens; was SOCIAL_MCP_HOME spelled differently (the key is tied to the exact path) or the keyring entry deleted?", home)
+		}
 		if err != nil {
 			return Key{}, fmt.Errorf("load master key from the OS keyring: %w (tokens are sealed with that key; retry once the keyring is unlocked)", err)
 		}

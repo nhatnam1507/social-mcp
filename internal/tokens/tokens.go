@@ -113,7 +113,7 @@ func (m *Manager) Refresh(ctx context.Context, l Lease) (Lease, error) {
 	fresh, err := p.Refresh(ctx, stored)
 	if err != nil {
 		if errors.Is(err, provider.ErrReauthRequired) {
-			if serr := m.store.SetCredentialStatus(c.ID, store.StatusNeedsReauth); serr != nil {
+			if serr := m.store.MarkCredentialStatus(c.ID, c.Version, store.StatusNeedsReauth); serr != nil {
 				m.log.Error("mark credential needs_reauth", "credential", c.ID, "err", serr)
 			}
 		}

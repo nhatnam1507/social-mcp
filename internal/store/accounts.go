@@ -141,6 +141,11 @@ func (s *Store) UpsertLogin(c Credential, accounts []Account) (Credential, []Acc
 		a.Status = StatusOK
 		out = append(out, a)
 	}
+	// A re-login under a different subject moves accounts away from their old credential;
+	// drop credentials no account uses so their tokens are not kept or refreshed.
+	if _, err := tx.Exec("DELETE FROM credentials WHERE platform = ? AND id != ? AND NOT EXISTS (SELECT 1 FROM accounts WHERE credential_id = credentials.id)", c.Platform, c.ID); err != nil {
+		return c, nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return c, nil, err
 	}
@@ -182,6 +187,20 @@ func (s *Store) UpdateCredentialToken(id string, expectedVersion int64, sealed [
 	}
 	n, err := res.RowsAffected()
 	return n == 1, err
+}
+
+// MarkCredentialStatus sets a credential's status only if it is still at version, so a
+// failure observed with an old token cannot overwrite a newer login.
+func (s *Store) MarkCredentialStatus(id string, version int64, status string) error {
+	_, err := s.w.Exec("UPDATE credentials SET status = ?, updated_at = ? WHERE id = ? AND version = ?", status, nowMs(), id, version)
+	return err
+}
+
+// MarkAccountStatus sets an account's status only if the row has not changed since
+// updatedAt (a re-login updates it).
+func (s *Store) MarkAccountStatus(id string, updatedAt time.Time, status string) error {
+	_, err := s.w.Exec("UPDATE accounts SET status = ?, updated_at = ? WHERE id = ? AND updated_at = ?", status, nowMs(), id, updatedAt.UnixMilli())
+	return err
 }
 
 // SetCredentialStatus sets a credential's status.

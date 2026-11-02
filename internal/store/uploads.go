@@ -104,18 +104,56 @@ func scanUpload(r rowScanner) (Upload, error) {
 
 // InsertUpload creates a job and returns it with its ID.
 func (s *Store) InsertUpload(u Upload) (Upload, error) {
-	u.ID = ids.New("job")
-	if u.Request == nil {
-		u.Request = json.RawMessage("{}")
-	}
-	now := nowMs()
-	_, err := s.w.Exec(`INSERT INTO uploads(id, account_id, platform, file_path, file_size, file_mtime, file_fingerprint, container, request, status, phase, created_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		u.ID, u.AccountID, u.Platform, u.FilePath, u.FileSize, unixNano(u.FileMtime), u.FileFingerprint, u.Container, string(u.Request), u.Status, u.Phase, now, now)
+	out, err := s.InsertUploads([]Upload{u})
 	if err != nil {
 		return u, err
 	}
-	return s.GetUpload(u.ID)
+	return out[0], nil
+}
+
+// InsertUploads creates several jobs in one transaction.
+func (s *Store) InsertUploads(us []Upload) ([]Upload, error) {
+	tx, err := s.w.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	now := nowMs()
+	for i := range us {
+		u := &us[i]
+		u.ID = ids.New("job")
+		if u.Request == nil {
+			u.Request = json.RawMessage("{}")
+		}
+		if _, err := tx.Exec(`INSERT INTO uploads(id, account_id, platform, file_path, file_size, file_mtime, file_fingerprint, container, request, status, phase, created_at, updated_at)
+			VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			u.ID, u.AccountID, u.Platform, u.FilePath, u.FileSize, unixNano(u.FileMtime), u.FileFingerprint, u.Container, string(u.Request), u.Status, u.Phase, now, now); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	out := make([]Upload, len(us))
+	for i, u := range us {
+		got, err := s.GetUpload(u.ID)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = got
+	}
+	return out, nil
+}
+
+// CancelQueued cancels a queued job that has not reached its publish step. It reports
+// whether the job was cancelled.
+func (s *Store) CancelQueued(id, note string) (bool, error) {
+	res, err := s.w.Exec("UPDATE uploads SET status = 'cancelled', note = ?, updated_at = ? WHERE id = ? AND status = 'queued' AND phase IN ('pending', 'transferring')", note, nowMs(), id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
 }
 
 // GetUpload returns one job.

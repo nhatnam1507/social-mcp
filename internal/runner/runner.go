@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"sync"
 	"time"
@@ -26,6 +27,8 @@ var (
 const (
 	maxAttempts      = 3
 	defaultRateDelay = 60 * time.Second
+	// maxRateLimited bounds how long a job may keep waiting out rate limits.
+	maxRateLimited = 24 * time.Hour
 )
 
 // Options configures a Runner.
@@ -47,14 +50,15 @@ type Options struct {
 
 // Runner runs upload jobs.
 type Runner struct {
-	o      Options
-	wake   chan struct{}
-	stop   chan struct{}
-	wg     sync.WaitGroup
-	mu     sync.Mutex
-	jobs   map[string]*jobCtl
-	once   sync.Once
-	cancel context.CancelFunc
+	o        Options
+	wake     chan struct{}
+	stop     chan struct{}
+	wg       sync.WaitGroup
+	mu       sync.Mutex
+	jobs     map[string]*jobCtl
+	stopping bool
+	once     sync.Once
+	cancel   context.CancelCauseFunc
 }
 
 type jobCtl struct {
@@ -91,7 +95,7 @@ func (r *Runner) Start() error {
 	if n > 0 {
 		r.o.Log.Info("resuming interrupted uploads", "count", n)
 	}
-	base, cancel := context.WithCancel(context.Background())
+	base, cancel := context.WithCancelCause(context.Background())
 	r.cancel = cancel
 	for i := 0; i < r.o.Workers; i++ {
 		r.wg.Add(1)
@@ -106,6 +110,7 @@ func (r *Runner) Stop(ctx context.Context) {
 	r.once.Do(func() {
 		close(r.stop)
 		r.mu.Lock()
+		r.stopping = true
 		for _, j := range r.jobs {
 			j.cancel(errShutdown)
 		}
@@ -119,7 +124,7 @@ func (r *Runner) Stop(ctx context.Context) {
 		r.o.Log.Warn("workers did not stop in time")
 	}
 	if r.cancel != nil {
-		r.cancel()
+		r.cancel(errShutdown)
 	}
 }
 
@@ -188,6 +193,10 @@ func (r *Runner) run(base context.Context, job store.Upload) {
 	ctl := &jobCtl{cancel: cancel, committing: provider.PhaseAtLeast(job.Phase, provider.PhaseCommitting)}
 	r.mu.Lock()
 	r.jobs[job.ID] = ctl
+	if r.stopping {
+		// Claimed while shutdown was starting: interrupt it like every other running job.
+		cancel(errShutdown)
+	}
 	r.mu.Unlock()
 	defer func() {
 		r.mu.Lock()
@@ -202,9 +211,11 @@ func (r *Runner) run(base context.Context, job store.Upload) {
 
 // tokenOwner records which row a reauth failure should mark.
 type tokenOwner struct {
-	accountID    string
-	credentialID string
-	accountOwned bool
+	accountID        string
+	accountUpdatedAt time.Time
+	credentialID     string
+	credVersion      int64
+	accountOwned     bool
 }
 
 func (r *Runner) attempt(ctx context.Context, job store.Upload, ctl *jobCtl, st *attemptState) (provider.Result, tokenOwner, error) {
@@ -213,7 +224,7 @@ func (r *Runner) attempt(ctx context.Context, job store.Upload, ctl *jobCtl, st 
 	if err != nil {
 		return provider.Result{}, owner, provider.Permanent("account %s no longer exists", job.AccountID)
 	}
-	owner.accountID, owner.credentialID = acc.ID, acc.CredentialID
+	owner.accountID, owner.accountUpdatedAt, owner.credentialID = acc.ID, acc.UpdatedAt, acc.CredentialID
 	p, ok := r.o.Registry.Get(acc.Platform)
 	if !ok {
 		return provider.Result{}, owner, provider.Permanent("platform %s is not configured", acc.Platform)
@@ -222,17 +233,25 @@ func (r *Runner) attempt(ctx context.Context, job store.Upload, ctl *jobCtl, st 
 	if err := json.Unmarshal(job.Request, &meta); err != nil {
 		return provider.Result{}, owner, provider.Permanent("stored request is invalid: %v", err)
 	}
+	var file io.ReaderAt
 	f, err := videofile.Open(videofile.Info{Path: job.FilePath, Size: job.FileSize, ModTime: job.FileMtime, Fingerprint: job.FileFingerprint, Container: job.Container}, r.o.AllowedDirs)
-	if err != nil {
+	switch {
+	case err == nil:
+		defer f.Close()
+		file = f
+	case !provider.PhaseAtLeast(job.Phase, provider.PhaseCommitting):
 		return provider.Result{}, owner, err
+	default:
+		// The publish step may already have happened; the provider reconciles with the
+		// platform, which needs no file unless bytes are still missing.
+		r.o.Log.Warn("source file unavailable; reconciling without it", "job", job.ID, "err", err)
 	}
-	defer f.Close()
 
 	lease, err := r.o.Tokens.ForAccount(acc)
 	if err != nil {
 		return provider.Result{}, owner, err
 	}
-	owner.accountOwned = lease.AccountOwned
+	owner.accountOwned, owner.credVersion = lease.AccountOwned, lease.Version
 	if lease, err = r.o.Tokens.EnsureFresh(ctx, lease, 5*time.Minute); err != nil {
 		return provider.Result{}, owner, err
 	}
@@ -242,7 +261,7 @@ func (r *Runner) attempt(ctx context.Context, job store.Upload, ctl *jobCtl, st 
 		st.mu.Lock()
 		defer st.mu.Unlock()
 		return provider.UploadRequest{
-			AccountExternalID: acc.ExternalID, AccountMeta: acc.Meta, Token: tok, File: f, FileSize: job.FileSize,
+			AccountExternalID: acc.ExternalID, AccountMeta: acc.Meta, Token: tok, File: file, FileSize: job.FileSize,
 			Container: job.Container, Meta: meta, Phase: st.phase, Resume: st.resume,
 		}
 	}
@@ -254,6 +273,7 @@ func (r *Runner) attempt(ctx context.Context, job store.Upload, ctl *jobCtl, st 
 		if lease, err = r.o.Tokens.Refresh(ctx, lease); err != nil {
 			return res, owner, err
 		}
+		owner.credVersion = lease.Version
 		res, err = p.Upload(ctx, build(lease.Token), progress)
 		if errors.Is(err, provider.ErrUnauthorized) {
 			err = fmt.Errorf("%w: %v", provider.ErrReauthRequired, err)
@@ -327,6 +347,7 @@ func (r *Runner) finish(ctx context.Context, job store.Upload, st *attemptState,
 		}
 	}
 
+	committed := provider.PhaseAtLeast(phase, provider.PhaseCommitting)
 	var rl *provider.RateLimitError
 	switch {
 	case err == nil:
@@ -337,13 +358,19 @@ func (r *Runner) finish(ctx context.Context, job store.Upload, st *attemptState,
 		log.Info("upload finished", "outcome", res.Outcome, "remote_id", res.RemoteID)
 	case errors.Is(err, provider.ErrReauthRequired):
 		r.markReauth(owner)
-		msg := logx.Error(err) + "; run `social-mcp account reauth " + job.AccountID + "` and upload again"
+		msg := logx.Error(err) + "; run `social-mcp account reauth " + job.AccountID + "`"
+		if !committed {
+			msg += " and upload again"
+		}
 		f.Error = &msg
 	case errors.Is(err, provider.ErrOutcomeUnknown):
 		to = store.StatusNeedsReview
 		msg := logx.Error(err)
 		note := "The upload may or may not have been published. Check the platform before uploading again."
 		f.Error, f.Note = &msg, &note
+	case errors.As(err, &rl) && time.Since(job.CreatedAt) > maxRateLimited:
+		msg := "still rate limited after " + maxRateLimited.String() + ": " + logx.Error(err)
+		f.Error = &msg
 	case errors.As(err, &rl):
 		to = store.StatusQueued
 		delay := rl.RetryAfter
@@ -365,6 +392,12 @@ func (r *Runner) finish(ctx context.Context, job store.Upload, st *attemptState,
 			nb := time.Now().Add(r.o.Backoff[min(attempts-1, len(r.o.Backoff)-1)])
 			f.NotBefore = &nb
 		}
+	}
+	if committed && to == store.StatusFailed {
+		// The publish step may have taken effect: never invite a re-upload.
+		to = store.StatusNeedsReview
+		note := "The upload may or may not have been published. Check the platform before uploading again."
+		f.Note = &note
 	}
 	if err != nil {
 		log.Warn("upload attempt failed", "next_status", to, "err", err)
@@ -392,9 +425,9 @@ func (r *Runner) write(jobID, to string, f store.UploadFields) {
 func (r *Runner) markReauth(o tokenOwner) {
 	var err error
 	if o.accountOwned {
-		err = r.o.Store.SetAccountStatus(o.accountID, store.StatusNeedsReauth)
+		err = r.o.Store.MarkAccountStatus(o.accountID, o.accountUpdatedAt, store.StatusNeedsReauth)
 	} else if o.credentialID != "" {
-		err = r.o.Store.SetCredentialStatus(o.credentialID, store.StatusNeedsReauth)
+		err = r.o.Store.MarkCredentialStatus(o.credentialID, o.credVersion, store.StatusNeedsReauth)
 	}
 	if err != nil {
 		r.o.Log.Error("mark needs_reauth", "account", o.accountID, "err", err)

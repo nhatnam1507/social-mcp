@@ -244,3 +244,35 @@ func TestResetInterruptedOnlyTouchesUploading(t *testing.T) {
 		t.Fatal("queued job counts as active")
 	}
 }
+
+func TestReloginDropsOrphanedCredential(t *testing.T) {
+	s := openTest(t)
+	old, _ := seedAccount(t, s, "youtube", "ch1")
+	// Same channel signed in under a new subject: the account moves, the old credential goes.
+	if _, _, err := s.UpsertLogin(Credential{Platform: "youtube", Subject: "new-subject", SealedToken: []byte("t")},
+		[]Account{{Platform: "youtube", ExternalID: "ch1", DisplayName: "x"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetCredential(old.ID); err != ErrNotFound {
+		t.Fatalf("orphaned credential kept: %v", err)
+	}
+}
+
+func TestMarkStatusIgnoresStaleVersion(t *testing.T) {
+	s := openTest(t)
+	cred, acc := seedAccount(t, s, "tiktok", "u1")
+	newer, _, _ := s.UpsertLogin(Credential{Platform: "tiktok", Subject: cred.Subject, SealedToken: []byte("t2")},
+		[]Account{{Platform: "tiktok", ExternalID: "u1", DisplayName: "x"}})
+	if err := s.MarkCredentialStatus(cred.ID, cred.Version, StatusNeedsReauth); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetCredential(cred.ID); got.Status != StatusOK || got.Version != newer.Version {
+		t.Fatalf("stale mark applied: %+v", got)
+	}
+	if err := s.MarkAccountStatus(acc.ID, acc.UpdatedAt.Add(-time.Second), StatusNeedsReauth); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetAccount(acc.ID); got.Status != StatusOK {
+		t.Fatalf("stale account mark applied: %s", got.Status)
+	}
+}

@@ -65,7 +65,7 @@ func (r *Refresher) RunOnce(ctx context.Context) {
 		}
 		if !c.Refreshable {
 			if !now.Before(c.ExpiresAt) {
-				if err := r.Store.SetCredentialStatus(c.ID, store.StatusNeedsReauth); err != nil {
+				if err := r.Store.MarkCredentialStatus(c.ID, c.Version, store.StatusNeedsReauth); err != nil {
 					log.Error("mark credential needs_reauth", "credential", c.ID, "err", err)
 				}
 			}

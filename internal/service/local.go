@@ -340,20 +340,28 @@ func (l *Local) SubmitUpload(in UploadInput) (UploadSubmission, error) {
 			return UploadSubmission{}, Invalid("platform_options has %q but no selected account is on that platform", platform)
 		}
 	}
+	jobs := make([]store.Upload, 0, len(ok))
 	for _, a := range ok {
 		req, err := json.Marshal(a.meta)
 		if err != nil {
 			return UploadSubmission{}, err
 		}
-		u, err := l.o.Store.InsertUpload(store.Upload{
+		jobs = append(jobs, store.Upload{
 			AccountID: a.acc.ID, Platform: a.acc.Platform, FilePath: info.Path, FileSize: info.Size, FileMtime: info.ModTime,
 			FileFingerprint: info.Fingerprint, Container: info.Container, Request: req,
 			Status: store.StatusQueued, Phase: store.PhasePending,
 		})
+	}
+	if len(jobs) > 0 {
+		// All jobs of one submission are created together, so a failed request never leaves
+		// some accounts queued (which a retrying agent would then upload to twice).
+		created, err := l.o.Store.InsertUploads(jobs)
 		if err != nil {
 			return UploadSubmission{}, err
 		}
-		sub.Jobs = append(sub.Jobs, JobRef{JobID: u.ID, AccountID: u.AccountID, Platform: u.Platform, Status: u.Status})
+		for _, u := range created {
+			sub.Jobs = append(sub.Jobs, JobRef{JobID: u.ID, AccountID: u.AccountID, Platform: u.Platform, Status: u.Status})
+		}
 	}
 	if len(sub.Jobs) == 0 {
 		msg := "no upload was created:"
@@ -402,12 +410,15 @@ func (l *Local) CancelUpload(id string) (JobView, error) {
 	}
 	switch u.Status {
 	case store.StatusQueued:
-		note := "cancelled by user"
-		applied, err := l.o.Store.TransitionUpload(id, store.StatusQueued, store.StatusCancelled, store.UploadFields{Note: &note})
+		if provider.PhaseAtLeast(u.Phase, provider.PhaseCommitting) {
+			// Requeued after its publish step may have happened; only reconciliation can tell.
+			return JobView{}, Invalid("%v", ErrJobCommitting)
+		}
+		applied, err := l.o.Store.CancelQueued(id, "cancelled by user")
 		if err != nil {
 			return JobView{}, err
 		}
-		if !applied { // a worker claimed it in the meantime
+		if !applied { // claimed by a worker or moved to committing in the meantime
 			return l.cancelRunning(id)
 		}
 	case store.StatusUploading:

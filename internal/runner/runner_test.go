@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -319,5 +321,84 @@ func TestSerializedPlatformRunsOneJobPerAccount(t *testing.T) {
 	}
 	if peak.Load() != 1 {
 		t.Fatalf("peak concurrency for one TikTok account = %d", peak.Load())
+	}
+}
+
+// commitThen returns an upload func that reaches the publish step, then fails with err.
+func commitThen(err error) func(context.Context, int, provider.UploadRequest, provider.Progress) (provider.Result, error) {
+	return func(ctx context.Context, call int, req provider.UploadRequest, p provider.Progress) (provider.Result, error) {
+		if call == 1 {
+			if perr := p(provider.ProgressUpdate{Phase: provider.PhaseCommitting, Resume: json.RawMessage(`{"s":1}`)}); perr != nil {
+				return provider.Result{}, perr
+			}
+		}
+		return provider.Result{}, err
+	}
+}
+
+func TestCommittedJobNeverEndsFailed(t *testing.T) {
+	cases := map[string]error{
+		"transient retries exhausted": errors.New("connection reset"),
+		"permanent":                   provider.Permanent("quota"),
+		"reauth":                      provider.ErrReauthRequired,
+	}
+	for name, failure := range cases {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t, "youtube")
+			h.env.Fake("youtube").UploadFunc = commitThen(failure)
+			_, acc := h.env.AddAccount(enginetest.AccountSpec{Platform: "youtube", ExternalID: "ch1", Refreshable: true})
+			h.start(t)
+			u := waitStatus(t, h.env.Store, h.submit(t, acc.ID)[0], store.StatusNeedsReview, store.StatusFailed)
+			if u.Status != store.StatusNeedsReview || strings.Contains(u.Error, "upload again") {
+				t.Fatalf("status=%s error=%q", u.Status, u.Error)
+			}
+		})
+	}
+}
+
+func TestCommittedJobReconcilesWithoutSourceFile(t *testing.T) {
+	h := newHarness(t, "youtube")
+	fake := h.env.Fake("youtube")
+	var path string
+	fake.UploadFunc = func(ctx context.Context, call int, req provider.UploadRequest, p provider.Progress) (provider.Result, error) {
+		if call == 1 {
+			p(provider.ProgressUpdate{Phase: provider.PhaseCommitting})
+			os.Remove(path) // file disappears after the final chunk was sent
+			return provider.Result{}, errors.New("timeout")
+		}
+		if req.File != nil {
+			return provider.Result{}, provider.Permanent("expected no file on reconcile")
+		}
+		return provider.Result{RemoteID: "found", Outcome: provider.OutcomePublished}, nil
+	}
+	_, acc := h.env.AddAccount(enginetest.AccountSpec{Platform: "youtube", ExternalID: "ch1", Refreshable: true})
+	h.start(t)
+	path = h.env.VideoFile("gone.mp4", 4096)
+	sub, err := h.svc.SubmitUpload(service.UploadInput{FilePath: path, AccountIDs: []string{acc.ID}, Title: "T"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := waitStatus(t, h.env.Store, sub.Jobs[0].JobID, store.StatusSucceeded, store.StatusFailed, store.StatusNeedsReview)
+	if u.Status != store.StatusSucceeded || u.RemoteID != "found" {
+		t.Fatalf("status=%s error=%q", u.Status, u.Error)
+	}
+}
+
+func TestCancelRefusedForRequeuedCommittingJob(t *testing.T) {
+	h := newHarness(t, "youtube")
+	h.env.Fake("youtube").UploadFunc = commitThen(&provider.RateLimitError{RetryAfter: time.Hour, Msg: "slow"})
+	_, acc := h.env.AddAccount(enginetest.AccountSpec{Platform: "youtube", ExternalID: "ch1", Refreshable: true})
+	h.start(t)
+	id := h.submit(t, acc.ID)[0]
+	u := waitStatus(t, h.env.Store, id, store.StatusQueued)
+	for u.Phase != store.PhaseCommitting {
+		time.Sleep(5 * time.Millisecond)
+		u, _ = h.env.Store.GetUpload(id)
+	}
+	if _, err := h.svc.CancelUpload(id); !service.IsValidation(err) {
+		t.Fatalf("cancel of requeued committing job: %v", err)
+	}
+	if u, _ := h.env.Store.GetUpload(id); u.Status != store.StatusQueued {
+		t.Fatalf("status %s", u.Status)
 	}
 }
