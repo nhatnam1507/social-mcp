@@ -339,7 +339,16 @@ func TestExpiredUploadURLRestartsOnce(t *testing.T) {
 	f := &fakeTikTok{statusSeq: []string{"SEND_TO_USER_INBOX"}, expireURL: true}
 	p := testProvider(f.server(t))
 	rec := &recorder{}
-	if _, err := p.Upload(context.Background(), req(bytes.Repeat([]byte{1}, 100), rec), rec.progress); err != nil || f.inits != 2 {
+	if _, err := p.Upload(context.Background(), req(bytes.Repeat([]byte{1}, 25_000_000), rec), rec.progress); err != nil || f.inits != 2 {
+		t.Fatalf("err %v inits %d", err, f.inits)
+	}
+}
+
+func TestRejectedFinalChunkNeverRestarts(t *testing.T) {
+	f := &fakeTikTok{statusSeq: []string{"SEND_TO_USER_INBOX"}, expireURL: true}
+	p := testProvider(f.server(t))
+	rec := &recorder{}
+	if _, err := p.Upload(context.Background(), req(bytes.Repeat([]byte{1}, 100), rec), rec.progress); !errors.Is(err, provider.ErrOutcomeUnknown) || f.inits != 1 {
 		t.Fatalf("err %v inits %d", err, f.inits)
 	}
 }

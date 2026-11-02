@@ -128,8 +128,12 @@ func (p *Provider) transfer(ctx context.Context, req provider.UploadRequest, st 
 			}
 			return p.poll(ctx, req, st.PublishID)
 		case http.StatusForbidden, http.StatusNotFound, http.StatusRequestedRangeNotSatisfiable:
-			// The chunk was explicitly rejected (expired URL or out-of-sync range), so the
-			// upload is incomplete and no draft exists yet: starting over is safe.
+			if i == count-1 {
+				// Committing was already reported; never start over from here.
+				return provider.Result{}, provider.OutcomeUnknown("TikTok rejected the final chunk (HTTP %d); check the TikTok inbox", code)
+			}
+			// An earlier chunk was rejected (expired URL or out-of-sync range): the upload is
+			// incomplete and no draft exists yet, so starting over is safe.
 			return provider.Result{}, errRestart
 		default:
 			if code >= 500 {

@@ -123,6 +123,12 @@ func (p *Provider) token(ctx context.Context, form url.Values) (provider.Token, 
 	if tr.Error == "invalid_grant" {
 		return provider.Token{}, fmt.Errorf("%w: %s", provider.ErrReauthRequired, tr.Description)
 	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return provider.Token{}, &provider.RateLimitError{RetryAfter: provider.RetryAfter(resp.Header, time.Minute), Msg: tr.Description}
+	}
+	if resp.StatusCode >= 500 {
+		return provider.Token{}, fmt.Errorf("Google token endpoint returned %s", resp.Status)
+	}
 	if resp.StatusCode != http.StatusOK || tr.AccessToken == "" {
 		return provider.Token{}, provider.Permanent("Google token endpoint: %s %s %s", resp.Status, tr.Error, tr.Description)
 	}
@@ -222,7 +228,7 @@ func apiError(resp *http.Response, body []byte) error {
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized:
 		return fmt.Errorf("%w: %s", provider.ErrUnauthorized, msg)
-	case resp.StatusCode == http.StatusTooManyRequests:
+	case resp.StatusCode == http.StatusTooManyRequests || reason == "rateLimitExceeded" || reason == "userRateLimitExceeded":
 		return &provider.RateLimitError{RetryAfter: provider.RetryAfter(resp.Header, time.Minute), Msg: msg}
 	case resp.StatusCode >= 500:
 		return fmt.Errorf("YouTube returned %s %s", resp.Status, msg)

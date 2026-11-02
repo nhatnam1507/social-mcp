@@ -113,7 +113,14 @@ func (p *Provider) token(ctx context.Context, form url.Values) (provider.Token, 
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&tr); err != nil {
 		return provider.Token{}, fmt.Errorf("TikTok token endpoint returned %s", resp.Status)
 	}
-	// A refresh rejected by TikTok (expired, revoked or rotated-away token) needs a new login.
+	if resp.StatusCode == http.StatusTooManyRequests || tr.Error == "rate_limit_exceeded" {
+		return provider.Token{}, &provider.RateLimitError{RetryAfter: provider.RetryAfter(resp.Header, time.Minute), Msg: tr.Description}
+	}
+	// A refresh rejected by TikTok (expired, revoked or rotated-away token) needs a new login;
+	// a rejected app credential is a configuration problem instead.
+	if tr.Error == "invalid_client" {
+		return provider.Token{}, provider.Permanent("TikTok rejected the app credentials (client_key/client_secret): %s", tr.Description)
+	}
 	if tr.Error == "invalid_grant" || (form.Get("grant_type") == "refresh_token" && tr.AccessToken == "" && resp.StatusCode < 500) {
 		return provider.Token{}, fmt.Errorf("%w: %s %s", provider.ErrReauthRequired, tr.Error, tr.Description)
 	}

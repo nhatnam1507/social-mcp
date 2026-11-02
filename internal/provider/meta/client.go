@@ -89,7 +89,8 @@ func classify(resp *http.Response, body []byte) error {
 	case ge.Code == 190:
 		// Meta tokens cannot be refreshed: an invalid or expired token needs a new login.
 		return fmt.Errorf("%w: %v", provider.ErrReauthRequired, ge)
-	case ge.Code == 4 || ge.Code == 17 || ge.Code == 32 || ge.Code == 613 || resp.StatusCode == http.StatusTooManyRequests:
+	case ge.Code == 4 || ge.Code == 17 || ge.Code == 32 || ge.Code == 341 || ge.Code == 613 ||
+		(ge.Code >= 80000 && ge.Code <= 80014) || resp.StatusCode == http.StatusTooManyRequests:
 		return &provider.RateLimitError{RetryAfter: provider.RetryAfter(resp.Header, 5*time.Minute), Msg: ge.Message}
 	case ge.Transient || resp.StatusCode >= 500 || ge.Code == 1 || ge.Code == 2:
 		return ge
@@ -132,25 +133,26 @@ func (c *Client) PostForm(ctx context.Context, base, path string, form url.Value
 	return c.do(req, token, out)
 }
 
-// PostMultipart calls POST base+path with form fields and one file part.
-func (c *Client) PostMultipart(ctx context.Context, base, path string, fields map[string]string, fileField string, file io.Reader, token string, out any) error {
-	var buf bytes.Buffer
-	mw := multipart.NewWriter(&buf)
+// PostMultipart calls POST base+path with form fields and one file part of size bytes,
+// streaming the file instead of buffering it.
+func (c *Client) PostMultipart(ctx context.Context, base, path string, fields map[string]string, fileField string, file io.Reader, size int64, token string, out any) error {
+	var head bytes.Buffer
+	mw := multipart.NewWriter(&head)
 	for k, v := range fields {
-		mw.WriteField(k, v)
+		if err := mw.WriteField(k, v); err != nil {
+			return err
+		}
 	}
-	fw, err := mw.CreateFormFile(fileField, "chunk")
+	if _, err := mw.CreateFormFile(fileField, "chunk"); err != nil {
+		return err
+	}
+	tail := "\r\n--" + mw.Boundary() + "--\r\n"
+	body := io.MultiReader(bytes.NewReader(head.Bytes()), io.LimitReader(file, size), strings.NewReader(tail))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, body)
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(fw, file); err != nil {
-		return err
-	}
-	mw.Close()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, &buf)
-	if err != nil {
-		return err
-	}
+	req.ContentLength = int64(head.Len()) + size + int64(len(tail))
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	return c.do(req, token, out)
 }

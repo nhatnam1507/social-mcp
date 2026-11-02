@@ -251,3 +251,15 @@ func TestServiceRejectsPrivateInstagram(t *testing.T) {
 		t.Fatalf("restrictions %v", r)
 	}
 }
+
+func TestPublishedContainerBeforeCommitIsUnknown(t *testing.T) {
+	f := &fakeIG{status: "PUBLISHED"}
+	p := testProvider(f.server(t))
+	data := []byte("reel")
+	f.total, f.containers = int64(len(data)), 1
+	f.received.Write(data)
+	rec := &recorder{phase: provider.PhaseTransferring, resume: json.RawMessage(`{"container_id":"c1"}`)}
+	if _, err := p.Upload(context.Background(), req(data, rec), rec.progress); !errors.Is(err, provider.ErrOutcomeUnknown) || f.publishes != 0 {
+		t.Fatalf("err %v publishes %d", err, f.publishes)
+	}
+}

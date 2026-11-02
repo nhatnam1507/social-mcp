@@ -71,6 +71,13 @@ func (p *Provider) Upload(ctx context.Context, req provider.UploadRequest, progr
 	if chunk <= 0 || chunk%chunkMultiple != 0 {
 		chunk = defaultChunk
 	}
+	if offset < req.FileSize && req.File == nil {
+		if committing {
+			return provider.Result{}, provider.OutcomeUnknown("the source file is gone and YouTube has not confirmed the upload; check YouTube Studio")
+		}
+		return provider.Result{}, provider.Permanent("the source file is no longer available")
+	}
+	stalls := 0
 	for offset < req.FileSize {
 		end := min(offset+chunk, req.FileSize)
 		if end == req.FileSize && !provider.PhaseAtLeast(phase, provider.PhaseCommitting) {
@@ -91,6 +98,13 @@ func (p *Provider) Upload(ctx context.Context, req provider.UploadRequest, progr
 		}
 		if s.done {
 			return s.result, nil
+		}
+		if s.offset <= offset {
+			if stalls++; stalls >= 3 {
+				return provider.Result{}, fmt.Errorf("YouTube is not accepting upload data (offset stuck at %d)", s.offset)
+			}
+		} else {
+			stalls = 0
 		}
 		offset = s.offset
 		progress(provider.ProgressUpdate{BytesSent: offset})

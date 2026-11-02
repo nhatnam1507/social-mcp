@@ -26,6 +26,7 @@ type fakeGraph struct {
 	finishes   int
 	published  string
 	loseFinish bool
+	failFinish int // respond 500 to this many finish calls
 	videoKnown bool
 	chunk      int64
 }
@@ -74,11 +75,17 @@ func (f *fakeGraph) server(t *testing.T) *httptest.Server {
 			case "start":
 				f.total, _ = strconv.ParseInt(r.PostForm.Get("file_size"), 10, 64)
 				f.received.Reset()
+				f.videoKnown = true
 				f.offsets(w)
 			case "finish":
+				if f.failFinish > 0 {
+					f.failFinish--
+					w.WriteHeader(500)
+					fmt.Fprint(w, `{"error":{"code":2,"message":"temporary","is_transient":true}}`)
+					return
+				}
 				f.finishes++
 				f.published = r.PostForm.Get("published")
-				f.videoKnown = true
 				if f.loseFinish {
 					hj, _ := w.(http.Hijacker)
 					c, _, _ := hj.Hijack()
@@ -93,7 +100,14 @@ func (f *fakeGraph) server(t *testing.T) *httptest.Server {
 				fmt.Fprint(w, `{"error":{"code":100,"message":"Unsupported get request"}}`)
 				return
 			}
-			fmt.Fprintf(w, `{"id":"vid1","published":%s,"status":{"video_status":"processing","uploading_phase":{"status":"complete"}}}`, f.published)
+			upload, publish, published := "in_progress", "not_started", "false"
+			if f.total > 0 && int64(f.received.Len()) == f.total {
+				upload = "complete"
+			}
+			if f.finishes > 0 {
+				publish, published = "complete", f.published
+			}
+			fmt.Fprintf(w, `{"id":"vid1","published":%s,"status":{"video_status":"processing","uploading_phase":{"status":%q},"publishing_phase":{"status":%q}}}`, published, upload, publish)
 		default:
 			w.WriteHeader(404)
 		}
@@ -210,5 +224,37 @@ func TestPageTokenRejectedNeedsReauth(t *testing.T) {
 	r.Token.AccessToken = "revoked"
 	if _, err := p.Upload(context.Background(), r, rec.progress); !errors.Is(err, provider.ErrReauthRequired) {
 		t.Fatalf("err %v", err)
+	}
+}
+
+func TestCrashBeforeFinishFinishesOnResume(t *testing.T) {
+	f := &fakeGraph{}
+	p := testProvider(f.server(t))
+	data := []byte("video bytes")
+	rec := &recorder{}
+	crash := func(u provider.ProgressUpdate) error {
+		rec.progress(u)
+		if u.Phase == provider.PhaseCommitting {
+			return errors.New("daemon stopped before finish")
+		}
+		return nil
+	}
+	if _, err := p.Upload(context.Background(), req(data, provider.PrivacyPublic, rec), crash); err == nil || f.finishes != 0 {
+		t.Fatalf("expected crash before finish: %v finishes=%d", err, f.finishes)
+	}
+	rec.phase = provider.PhaseCommitting // the runner persisted committing
+	res, err := p.Upload(context.Background(), req(data, provider.PrivacyPublic, rec), rec.progress)
+	if err != nil || res.Outcome != provider.OutcomePublished || f.finishes != 1 {
+		t.Fatalf("resume: %+v %v finishes=%d", res, err, f.finishes)
+	}
+}
+
+func TestUploadCompleteAloneIsNotSuccess(t *testing.T) {
+	f := &fakeGraph{failFinish: 1}
+	p := testProvider(f.server(t))
+	rec := &recorder{}
+	_, err := p.Upload(context.Background(), req([]byte("video bytes"), provider.PrivacyPublic, rec), rec.progress)
+	if !errors.Is(err, provider.ErrOutcomeUnknown) || f.finishes != 0 {
+		t.Fatalf("transient finish failure must not report success: %v finishes=%d", err, f.finishes)
 	}
 }

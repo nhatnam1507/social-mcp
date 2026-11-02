@@ -30,6 +30,8 @@ func TestClassify(t *testing.T) {
 		{400, `{"error":{"code":190,"message":"invalid"}}`, func(e error) bool { return errors.Is(e, provider.ErrReauthRequired) }},
 		{400, `{"error":{"code":4,"message":"app limit"}}`, func(e error) bool { var r *provider.RateLimitError; return errors.As(e, &r) }},
 		{400, `{"error":{"code":32,"message":"page limit"}}`, func(e error) bool { var r *provider.RateLimitError; return errors.As(e, &r) }},
+		{400, `{"error":{"code":80001,"message":"page token BUC limit"}}`, func(e error) bool { var r *provider.RateLimitError; return errors.As(e, &r) }},
+		{400, `{"error":{"code":80002,"message":"instagram BUC limit"}}`, func(e error) bool { var r *provider.RateLimitError; return errors.As(e, &r) }},
 		{500, `{"error":{"code":2,"message":"temporary","is_transient":true}}`, func(e error) bool { return !provider.IsPermanent(e) && !errors.Is(e, provider.ErrReauthRequired) }},
 		{403, `{"error":{"code":200,"message":"no permission"}}`, provider.IsPermanent},
 		{400, `{"error":{"code":10,"message":"denied"}}`, provider.IsPermanent},

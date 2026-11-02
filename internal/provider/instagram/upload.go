@@ -37,7 +37,7 @@ func (p *Provider) Upload(ctx context.Context, req provider.UploadRequest, progr
 		json.Unmarshal(req.Resume, &st)
 	}
 	if provider.PhaseAtLeast(req.Phase, provider.PhaseCommitting) {
-		return p.reconcile(ctx, req, st.ContainerID, true)
+		return p.reconcile(ctx, req, st.ContainerID)
 	}
 
 	offset := int64(0)
@@ -49,7 +49,8 @@ func (p *Provider) Upload(ctx context.Context, req provider.UploadRequest, progr
 		case err != nil || s.StatusCode == "ERROR" || s.StatusCode == "EXPIRED":
 			st = resumeState{} // unusable container; nothing was published
 		case s.StatusCode == "PUBLISHED":
-			return p.finish(ctx, req, "")
+			// This job never called media_publish, so the status cannot be trusted as success.
+			return provider.Result{}, provider.OutcomeUnknown("Instagram reports container %s as published although this job never published it; check the profile", st.ContainerID)
 		case s.StatusCode == "FINISHED":
 			offset = req.FileSize
 		default:
@@ -149,6 +150,8 @@ func (p *Provider) upload(ctx context.Context, req provider.UploadRequest, conta
 	switch {
 	case resp.StatusCode == http.StatusOK && out.Success:
 		return nil
+	case resp.StatusCode == http.StatusUnauthorized:
+		return fmt.Errorf("%w: Instagram rejected the access token: %s", provider.ErrReauthRequired, out.DebugInfo.Message)
 	case resp.StatusCode >= 500 || out.DebugInfo.Retriable:
 		return fmt.Errorf("Instagram upload failed (%s): %s", resp.Status, out.DebugInfo.Message)
 	}
@@ -196,14 +199,15 @@ func (p *Provider) publish(ctx context.Context, req provider.UploadRequest, cont
 		if provider.IsPermanent(err) || errors.Is(err, provider.ErrReauthRequired) || ctx.Err() != nil {
 			return provider.Result{}, err
 		}
-		return p.reconcile(ctx, req, containerID, false)
+		return p.reconcile(ctx, req, containerID)
 	}
 	return p.finish(ctx, req, out.ID)
 }
 
-// reconcile decides what to do with a container whose publish may have happened. With
-// mayPublish, a container confirmed FINISHED (not published) is published now.
-func (p *Provider) reconcile(ctx context.Context, req provider.UploadRequest, containerID string, mayPublish bool) (provider.Result, error) {
+// reconcile decides the outcome of a container whose publish may have happened. Only a
+// PUBLISHED container counts as success; a FINISHED one is not re-published, because the
+// status may lag behind a publish whose response was lost.
+func (p *Provider) reconcile(ctx context.Context, req provider.UploadRequest, containerID string) (provider.Result, error) {
 	if containerID == "" {
 		return provider.Result{}, provider.OutcomeUnknown("no Instagram container recorded for a committing job")
 	}
@@ -211,9 +215,6 @@ func (p *Provider) reconcile(ctx context.Context, req provider.UploadRequest, co
 	switch {
 	case err == nil && s.StatusCode == "PUBLISHED":
 		return p.finish(ctx, req, "")
-	case err == nil && s.StatusCode == "FINISHED" && mayPublish:
-		// Confirmed not yet published: publishing now cannot duplicate.
-		return p.publish(ctx, req, containerID)
 	}
 	return provider.Result{}, provider.OutcomeUnknown("could not confirm whether Instagram published container %s; check the profile", containerID)
 }
