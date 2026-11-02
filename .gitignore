@@ -1,0 +1,6 @@
+/dist/
+*.db
+*.db-wal
+*.db-shm
+/social-mcp
+/social-mcp.exe
