@@ -445,24 +445,29 @@ func TestRateLimitCapFiresAfterStreak(t *testing.T) {
 
 func TestCommittedResumeChangeMustPersist(t *testing.T) {
 	h := newHarness(t, "instagram")
-	var persistErr error
+	persisted := make(chan error, 1)
 	h.env.Fake("instagram").UploadFunc = func(ctx context.Context, call int, req provider.UploadRequest, p provider.Progress) (provider.Result, error) {
 		if err := p(provider.ProgressUpdate{Phase: provider.PhaseCommitting, Resume: json.RawMessage(`{"a":1}`)}); err != nil {
 			return provider.Result{}, err
 		}
 		// Close the store so the next must-persist write fails; it must surface as an error.
 		h.env.Store.Close()
-		persistErr = p(provider.ProgressUpdate{Resume: json.RawMessage(`{"a":2}`)})
-		return provider.Result{}, persistErr
+		err := p(provider.ProgressUpdate{Resume: json.RawMessage(`{"a":2}`)})
+		select {
+		case persisted <- err:
+		default:
+		}
+		return provider.Result{}, err
 	}
 	_, acc := h.env.AddAccount(enginetest.AccountSpec{Platform: "instagram", ExternalID: "ig1"})
 	h.submit(t, acc.ID)
 	h.start(t)
-	deadline := time.Now().Add(5 * time.Second)
-	for persistErr == nil && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if persistErr == nil {
-		t.Fatal("a failed resume write after committing was swallowed")
+	select {
+	case err := <-persisted:
+		if err == nil {
+			t.Fatal("a failed resume write after committing was swallowed")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("upload never reached the second progress write")
 	}
 }
