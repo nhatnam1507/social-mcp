@@ -1,6 +1,6 @@
 ---
 title: "Phase 4: MCP server"
-status: todo
+status: completed
 priority: P1
 effort: 3h
 dependencies: [3]
@@ -18,8 +18,8 @@ the daemon's loopback listener and over stdio by `social-mcp mcp`.
 
 ## Requirements
 
-- [ ] Dependency: `github.com/modelcontextprotocol/go-sdk` v1.8.0 (pinned).
-- [ ] `internal/mcpserver.New(svc service.Service, version string) *mcp.Server` with server
+- [x] Dependency: `github.com/modelcontextprotocol/go-sdk` v1.8.0 (pinned).
+- [x] `internal/mcpserver.New(svc service.Service, version string) *mcp.Server` with server
       instructions:
       - When the user gives a video file path, call `list_accounts`, pick the accounts the user asked for
         (ask the user if unclear), then call `upload_video` with that exact path.
@@ -29,7 +29,7 @@ the daemon's loopback listener and over stdio by `social-mcp mcp`.
       - Use `privacy: "public"` only when the user asked for public; never claim a post is public unless
         the job outcome is `published` with public privacy. `needs_review` means the result is unknown;
         tell the user to check the platform.
-- [ ] Tools (typed input/output structs with JSON schema descriptions; DTOs from phase 2):
+- [x] Tools (typed input/output structs with JSON schema descriptions; DTOs from phase 2):
       - `list_accounts {platform?}` → `{accounts: [AccountView]}` (includes per-provider `options`)
       - `upload_video {file_path, account_ids[], title, description?, tags?, privacy?, platform_options?}`
         → `UploadSubmission`
@@ -37,19 +37,19 @@ the daemon's loopback listener and over stdio by `social-mcp mcp`.
       - `list_uploads {status?, account_id?, limit? (default 20, max 100)}` → `{jobs: [JobView]}`
       - `cancel_upload {job_id}` → `JobView`
       Tool errors return results with `isError: true` and a sanitized message.
-- [ ] Annotations (so MCP clients prompt the user before uploading — this is the approval gate for
+- [x] Annotations (so MCP clients prompt the user before uploading — this is the approval gate for
       public posts, chosen by the user over a server-side gate): `list_accounts`, `get_upload_status`,
       `list_uploads` → `readOnlyHint: true`; `upload_video` → `readOnlyHint: false`,
       `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: true`, and a description stating
       that it publishes to external platforms with the given privacy; `cancel_upload` →
       `readOnlyHint: false`, `destructiveHint: false`.
-- [ ] HTTP: `mcp.NewStreamableHTTPHandler` with `StreamableHTTPOptions{Stateless: true}` (SDK localhost
+- [x] HTTP: `mcp.NewStreamableHTTPHandler` with `StreamableHTTPOptions{Stateless: true}` (SDK localhost
       protection left enabled), mounted at `/mcp`, wrapped by middleware in this order:
       (1) `Host` must be `127.0.0.1:<port>`, `localhost:<port>` or `[::1]:<port>` → else 403;
       (2) a present `Origin` must be `http://` + one of those → else 403;
       (3) `Authorization: Bearer <token>`, non-empty, constant-time compare → else 401.
       No detail in error bodies.
-- [ ] `social-mcp mcp`: stdio transport, `svc = control.Client`; daemon not running → exit with
+- [x] `social-mcp mcp`: stdio transport, `svc = control.Client`; daemon not running → exit with
       "daemon not running, run `social-mcp daemon start`". Same `mcpserver.New`.
 
 ## Files
@@ -71,10 +71,10 @@ the daemon's loopback listener and over stdio by `social-mcp mcp`.
 
 ## Todo
 
-- [ ] tools + instructions + annotations
-- [ ] host/origin/bearer middleware
-- [ ] mount in daemon (stateless)
-- [ ] stdio `mcp` command
+- [x] tools + instructions + annotations
+- [x] host/origin/bearer middleware
+- [x] mount in daemon (stateless)
+- [x] stdio `mcp` command
 
 ## Verification
 

@@ -1,0 +1,47 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - name: unit tests (race detector)
+        if: runner.os != 'Windows'
+        run: go test -race -count=1 ./...
+      - name: unit tests
+        if: runner.os == 'Windows'
+        run: go test -count=1 ./...
+      - name: end-to-end test
+        run: go test -tags e2e -count=1 -v ./e2e/...
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: bash scripts/build-all.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: social-mcp-binaries
+          path: dist/

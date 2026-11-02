@@ -79,14 +79,14 @@ the stdio MCP mode (through a control-socket client). MCP tool code is written o
 
 | # | Phase | Status |
 |---|-------|--------|
-| 1 | [Foundation: module, config, paths, secrets, store](./phase-01-foundation.md) | Pending |
-| 2 | [Core engine: provider contract, OAuth, file guard, runner, refresher](./phase-02-core-engine.md) | Pending |
-| 3 | [Daemon and CLI](./phase-03-daemon-and-cli.md) | Pending |
-| 4 | [MCP server](./phase-04-mcp-server.md) | Pending |
-| 5 | [YouTube provider](./phase-05-youtube-provider.md) | Pending |
-| 6 | [TikTok provider (inbox)](./phase-06-tiktok-provider.md) | Pending |
-| 7 | [Meta providers: Facebook Pages, Instagram Reels](./phase-07-meta-providers.md) | Pending |
-| 8 | [CI, packaging, end-to-end test, docs](./phase-08-ci-packaging-docs.md) | Pending |
+| 1 | [Foundation: module, config, paths, secrets, store](./phase-01-foundation.md) | Completed |
+| 2 | [Core engine: provider contract, OAuth, file guard, runner, refresher](./phase-02-core-engine.md) | Completed |
+| 3 | [Daemon and CLI](./phase-03-daemon-and-cli.md) | Completed |
+| 4 | [MCP server](./phase-04-mcp-server.md) | Completed |
+| 5 | [YouTube provider](./phase-05-youtube-provider.md) | Completed |
+| 6 | [TikTok provider (inbox)](./phase-06-tiktok-provider.md) | Completed |
+| 7 | [Meta providers: Facebook Pages, Instagram Reels](./phase-07-meta-providers.md) | Completed |
+| 8 | [CI, packaging, end-to-end test, docs](./phase-08-ci-packaging-docs.md) | Completed |
 
 Dependencies: 1 → 2 → 3 → 4. Phases 5, 6, 7 depend on 2 and 3; their packages are
 disjoint, but each adds one registration line to `internal/daemon/providers.go`, so those

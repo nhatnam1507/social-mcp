@@ -1,6 +1,6 @@
 ---
 title: "Phase 8: CI, packaging, end-to-end test, docs"
-status: todo
+status: completed
 priority: P1
 effort: 4h
 dependencies: [3, 4, 5, 6, 7]
@@ -18,7 +18,7 @@ and document setup and limits.
 
 ## Requirements
 
-- [ ] End-to-end test (`e2e/e2e_test.go`, build tag `e2e`): builds `./cmd/social-mcp` with
+- [x] End-to-end test (`e2e/e2e_test.go`, build tag `e2e`): builds `./cmd/social-mcp` with
       `CGO_ENABLED=0` into a short temp dir (`os.MkdirTemp("", "sm")`); temp `SOCIAL_MCP_HOME`; config
       with a free `listen_port`; a small file with an mp4 `ftyp` header and a text file. Steps:
       - `daemon start` (the subprocess exits after printing the PID); then, from new processes,
@@ -28,14 +28,14 @@ and document setup and limits.
         token → 401; foreign Host → 403.
       - `social-mcp mcp` over stdio (SDK `CommandTransport`) lists the five tools.
       - `daemon stop` returns; `daemon status` exits 3; a second `daemon start` succeeds and stops again.
-- [ ] `scripts/build-all.sh`: linux/darwin/windows × amd64/arm64, `CGO_ENABLED=0`, `-trimpath`,
+- [x] `scripts/build-all.sh`: linux/darwin/windows × amd64/arm64, `CGO_ENABLED=0`, `-trimpath`,
       `-ldflags "-s -w -X main.version=$VERSION"` → `dist/social-mcp-<os>-<arch>[.exe]` and
       `dist/SHA256SUMS`.
-- [ ] `.github/workflows/ci.yml`: push/PR; matrix `ubuntu-latest`, `macos-latest`, `windows-latest`;
+- [x] `.github/workflows/ci.yml`: push/PR; matrix `ubuntu-latest`, `macos-latest`, `windows-latest`;
       `actions/setup-go` with `go-version-file: go.mod`; `go vet ./...`; `go test -race ./...`
       (Linux/macOS) / `go test ./...` (Windows); `go test -tags e2e ./e2e/...`; a Linux job runs
       `scripts/build-all.sh` and uploads `dist/`.
-- [ ] Docs:
+- [x] Docs:
       - `README.md`: what it is; install (binary or `go install`); quick start (`config init`, edit
         config, `daemon start`, `account add`, `config mcp`, then ask your agent "upload /path/video.mp4
         to my YouTube channel"); CLI reference; MCP tools; security model (local-only tokens, encrypted
@@ -69,10 +69,10 @@ and document setup and limits.
 
 ## Todo
 
-- [ ] e2e test
-- [ ] build-all script
-- [ ] CI workflow
-- [ ] README + docs
+- [x] e2e test
+- [x] build-all script
+- [x] CI workflow
+- [x] README + docs
 
 ## Verification
 

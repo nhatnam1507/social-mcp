@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Daemon and CLI"
-status: todo
+status: completed
 priority: P1
 effort: 7h
 dependencies: [2]
@@ -18,11 +18,11 @@ callback and later MCP, runner, refresher) and the cobra CLI that manages it and
 
 ## Requirements
 
-- [ ] Dependency: `github.com/spf13/cobra`.
-- [ ] `internal/daemon/providers.go`: `buildProviders(cfg) provider.Registry` — the only place that
+- [x] Dependency: `github.com/spf13/cobra`.
+- [x] `internal/daemon/providers.go`: `buildProviders(cfg) provider.Registry` — the only place that
       imports platform packages. Created here with no platforms; phases 5, 6, 7 each add one
       registration (serialize edits to this file).
-- [ ] `internal/daemon.Run(ctx, Options)` startup order:
+- [x] `internal/daemon.Run(ctx, Options)` startup order:
       1. Acquire an exclusive lock on `daemon.lock` (`flock` on Unix, `LockFileEx` on Windows via
          `golang.org/x/sys`), held for the process lifetime. Already locked → "already running".
       2. Home ownership check (phase 1).
@@ -35,48 +35,48 @@ callback and later MCP, runner, refresher) and the cobra CLI that manages it and
       6. Write pidfile; open store and keystore; build registry; start runner (which runs
          `ResetInterrupted`) and refresher; serve.
       `Options` allows `Home`, `SocketPath`, `ListenPort` overrides for tests.
-- [ ] Socket path: `home/daemon.sock`, or when that exceeds 100 bytes,
+- [x] Socket path: `home/daemon.sock`, or when that exceeds 100 bytes,
       `<os.TempDir()>/social-mcp-<first 12 hex of sha256(home)>.sock`. `paths.SocketPath(home)` is the
       single source used by daemon and CLI.
-- [ ] Shutdown (SIGINT/SIGTERM, Windows `os.Interrupt`, or control `POST /v1/shutdown`): stop accepting
+- [x] Shutdown (SIGINT/SIGTERM, Windows `os.Interrupt`, or control `POST /v1/shutdown`): stop accepting
       HTTP/control requests, `runner.Stop` (10s bound), stop refresher, close store, remove pidfile and
       socket, release lock.
-- [ ] Control API (JSON over HTTP on the socket, mirrors `service.Service` with the phase 2 DTOs):
+- [x] Control API (JSON over HTTP on the socket, mirrors `service.Service` with the phase 2 DTOs):
       `GET /v1/status`, `GET /v1/accounts?platform=`, `DELETE /v1/accounts/{id}`, `POST /v1/auth`
       `{platform, reauth_account_id?}` → `AuthStart`, `GET /v1/auth/{id}`, `POST /v1/uploads`,
       `GET /v1/uploads/{id}`, `GET /v1/uploads`, `POST /v1/uploads/{id}/cancel`, `POST /v1/shutdown`.
       `internal/control.Client` implements `service.Service` over the socket.
-- [ ] OAuth callback `GET /oauth/callback?state=&code=` (and `error=`): look up session by state;
+- [x] OAuth callback `GET /oauth/callback?state=&code=` (and `error=`): look up session by state;
       exchange; `Identities`; for a reauth session the target `external_id` must be among the returned
       identities, else fail the session ("the signed-in account does not include <name>") without writing
       anything; otherwise `UpsertLogin` keyed by `subject`. Render a minimal HTML page (escaped,
       sanitized). Redirect URI = `http://<provider.RedirectHost()>:<port>/oauth/callback`.
-- [ ] Detach: `daemon start` re-executes the binary as `daemon run --detached`, stdout/stderr →
+- [x] Detach: `daemon start` re-executes the binary as `daemon run --detached`, stdout/stderr →
       `daemon.log` (append), stdin from the null device. Unix: `SysProcAttr{Setsid: true}`. Windows:
       `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB`, retrying without
       breakaway on access denied (logged). Parent waits up to 10s for `GET /v1/status`, then prints PID,
       MCP URL and key backend, and exits.
-- [ ] `daemon stop`: `POST /v1/shutdown`, then wait up to 30s until `daemon.lock` can be acquired
+- [x] `daemon stop`: `POST /v1/shutdown`, then wait up to 30s until `daemon.lock` can be acquired
       (process exited). If it never releases: send SIGTERM (Unix) / `Process.Kill` (Windows) to the
       pidfile PID only if the lock is still held; report what was done.
-- [ ] `daemon status`: running/stopped, PID, version, uptime, listen URL, key backend, accounts by
+- [x] `daemon status`: running/stopped, PID, version, uptime, listen URL, key backend, accounts by
       platform and health, active uploads. Exit code 0 running, 3 stopped.
-- [ ] `daemon logs [-n 100] [-f]` tails `daemon.log` (follow by polling size). `daemon run` runs in the
+- [x] `daemon logs [-n 100] [-f]` tails `daemon.log` (follow by polling size). `daemon run` runs in the
       foreground, logging to stderr.
-- [ ] `account add <youtube|tiktok|facebook|instagram> [--no-browser]`: requires a running daemon;
+- [x] `account add <youtube|tiktok|facebook|instagram> [--no-browser]`: requires a running daemon;
       `POST /v1/auth`; open the browser only for `https://` URLs whose host is on the provider allowlist
       (`accounts.google.com`, `www.tiktok.com`, `www.facebook.com`) using `xdg-open` / `open` /
       `rundll32 url.dll,FileProtocolHandler`, or on WSL (`/proc/sys/kernel/osrelease` contains
       `microsoft`) `wslview` or `explorer.exe`; always print the URL; poll `GET /v1/auth/{id}` every
       second up to 10 minutes; print connected accounts.
-- [ ] `account list [--platform X] [--json]`, `account remove <id> [--yes]` (refused while jobs are
+- [x] `account list [--platform X] [--json]`, `account remove <id> [--yes]` (refused while jobs are
       active; deletes the credential when no account references it; prints a reminder that platform-side
       access can be revoked in the platform's app settings), `account reauth <id>`.
-- [ ] `config init [--force]` writes the template (0600), refuses to overwrite without `--force`;
+- [x] `config init [--force]` writes the template (0600), refuses to overwrite without `--force`;
       `config path`; `config mcp` prints the MCP URL, bearer token, and ready-to-paste client config
       (Claude Code `claude mcp add --transport http …` and a stdio JSON snippet). `config mcp --rotate`
       writes a new token atomically and tells the user to restart the daemon (no hot reload).
-- [ ] `version` command; version injected via `-ldflags "-X main.version=..."`.
+- [x] `version` command; version injected via `-ldflags "-X main.version=..."`.
 
 ## Files
 
@@ -109,14 +109,14 @@ callback and later MCP, runner, refresher) and the cobra CLI that manages it and
 
 ## Todo
 
-- [ ] process lock + startup/shutdown order
-- [ ] socket path fallback
-- [ ] control server + client
-- [ ] OAuth callback with reauth identity check
-- [ ] detach (unix/windows breakaway)
-- [ ] CLI: daemon, account, config, version
-- [ ] browser opener with allowlist
-- [ ] MCP token file
+- [x] process lock + startup/shutdown order
+- [x] socket path fallback
+- [x] control server + client
+- [x] OAuth callback with reauth identity check
+- [x] detach (unix/windows breakaway)
+- [x] CLI: daemon, account, config, version
+- [x] browser opener with allowlist
+- [x] MCP token file
 
 ## Verification
 

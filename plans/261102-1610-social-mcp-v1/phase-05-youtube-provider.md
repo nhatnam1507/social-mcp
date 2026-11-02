@@ -1,6 +1,6 @@
 ---
 title: "Phase 5: YouTube provider"
-status: todo
+status: completed
 priority: P1
 effort: 4h
 dependencies: [2, 3]
@@ -17,36 +17,36 @@ discovery, and resumable upload.
 
 ## Requirements
 
-- [ ] OAuth: auth `https://accounts.google.com/o/oauth2/v2/auth` with `client_id`, `redirect_uri`,
+- [x] OAuth: auth `https://accounts.google.com/o/oauth2/v2/auth` with `client_id`, `redirect_uri`,
       `response_type=code`, `scope="https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly"`,
       `access_type=offline`, `prompt=consent`, `state`, `code_challenge` (S256 base64url),
       `code_challenge_method=S256`. Token `https://oauth2.googleapis.com/token` (POST form:
       `authorization_code` with `code_verifier` and `client_secret`; `refresh_token` grant).
       `invalid_grant` on refresh → `ErrReauthRequired`. Keep the old refresh token when a refresh response
       omits it. `Refreshable() = true`, `RedirectHost() = "127.0.0.1"`.
-- [ ] Identities: `GET https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true` (Bearer
+- [x] Identities: `GET https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true` (Bearer
       header) → identities per returned channel (`id`, `snippet.title`). The consent screen binds the
       token to the chosen channel, so normally exactly one is returned. `subject` = the channel id, or
       the sorted channel ids joined with `,` if several are returned. Zero → error "this Google account
       has no YouTube channel".
-- [ ] Capabilities: direct; privacy `private|unlisted|public`; formats `mp4 mov webm mkv`; max 256GB;
+- [x] Capabilities: direct; privacy `private|unlisted|public`; formats `mp4 mov webm mkv`; max 256GB;
       restriction `quota_100_uploads_per_day_per_project`.
-- [ ] Options: `category_id` (string, default `"22"`), `made_for_kids` (bool, default false).
+- [x] Options: `category_id` (string, default `"22"`), `made_for_kids` (bool, default false).
       ValidateMeta: title required, ≤ 100 chars, no `<`/`>`; description ≤ 5000 bytes.
-- [ ] Upload (resumable): `POST https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status`
+- [x] Upload (resumable): `POST https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status`
       with JSON `{snippet:{title, description, tags, categoryId}, status:{privacyStatus, selfDeclaredMadeForKids}}`,
       headers `X-Upload-Content-Length`, `X-Upload-Content-Type`; session URI from `Location`
       (reported as phase `transferring`, resume `{session_uri}`). PUT 8 MiB chunks (multiple of 256 KiB)
       with `Content-Range: bytes a-b/total`; 308 → next offset from `Range`. Before the final chunk,
       report phase `committing`. 200/201 → video resource → `Result{RemoteID, URL: https://www.youtube.com/watch?v=<id>, Outcome: published (public/unlisted) | unpublished (private)}`.
-- [ ] Resume / reconcile: on any resume, or on a network error/timeout during a chunk, query the session
+- [x] Resume / reconcile: on any resume, or on a network error/timeout during a chunk, query the session
       with `Content-Range: bytes */total`: 200/201 → success with the returned resource; 308 → continue
       from `Range`; 404/410 → in phase `transferring` start a new session, in phase `committing` return
       `ErrOutcomeUnknown`.
-- [ ] Errors: 401 → `ErrUnauthorized`; 403 `quotaExceeded`/`uploadLimitExceeded`/`forbidden` and 400 →
+- [x] Errors: 401 → `ErrUnauthorized`; 403 `quotaExceeded`/`uploadLimitExceeded`/`forbidden` and 400 →
       `PermanentError` with the API reason; 429 → `RateLimitError` (honor `Retry-After`); 5xx/network →
       transient (after the reconcile query above).
-- [ ] Register in `internal/daemon/providers.go` when `[youtube]` is configured.
+- [x] Register in `internal/daemon/providers.go` when `[youtube]` is configured.
 
 ## Files
 
@@ -67,12 +67,12 @@ discovery, and resumable upload.
 
 ## Todo
 
-- [ ] OAuth
-- [ ] identities + subject
-- [ ] options + metadata validation
-- [ ] resumable upload with commit/reconcile
-- [ ] error mapping
-- [ ] registration
+- [x] OAuth
+- [x] identities + subject
+- [x] options + metadata validation
+- [x] resumable upload with commit/reconcile
+- [x] error mapping
+- [x] registration
 
 ## Verification
 
