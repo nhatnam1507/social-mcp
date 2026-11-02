@@ -5,6 +5,7 @@ import (
 
 	"github.com/nhatnam1507/social-mcp/internal/config"
 	"github.com/nhatnam1507/social-mcp/internal/provider"
+	"github.com/nhatnam1507/social-mcp/internal/provider/tiktok"
 	"github.com/nhatnam1507/social-mcp/internal/provider/youtube"
 )
 
@@ -14,6 +15,9 @@ func buildProviders(cfg config.Config, log *slog.Logger) provider.Registry {
 	reg := provider.Registry{}
 	if cfg.YouTubeEnabled() {
 		reg["youtube"] = youtube.New(cfg.YouTube.ClientID, cfg.YouTube.ClientSecret)
+	}
+	if cfg.TikTokEnabled() {
+		reg["tiktok"] = tiktok.New(cfg.TikTok.ClientKey, cfg.TikTok.ClientSecret)
 	}
 	return reg
 }
