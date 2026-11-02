@@ -1,7 +1,7 @@
 ---
 title: "social-mcp v1: multi-platform video upload MCP server"
 description: "Single Go binary that runs as a CLI-managed daemon, stores OAuth credentials for multiple accounts per platform, and exposes MCP tools for uploading local videos to YouTube, TikTok (drafts), Facebook Pages and Instagram Reels."
-status: pending
+status: completed
 priority: P1
 effort: 41h
 branch: feat/social-mcp-v1
