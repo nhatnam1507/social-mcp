@@ -363,7 +363,12 @@ func TestCommittedJobReconcilesWithoutSourceFile(t *testing.T) {
 	fake.UploadFunc = func(ctx context.Context, call int, req provider.UploadRequest, p provider.Progress) (provider.Result, error) {
 		if call == 1 {
 			p(provider.ProgressUpdate{Phase: provider.PhaseCommitting})
-			os.Remove(path) // file disappears after the final chunk was sent
+			// The file changes after the final chunk was sent. (Rewriting instead of deleting,
+			// since Windows refuses to delete a file the runner still has open.)
+			if f, err := os.OpenFile(path, os.O_WRONLY, 0); err == nil {
+				f.WriteAt([]byte{0xFF, 0xFE}, 100)
+				f.Close()
+			}
 			return provider.Result{}, errors.New("timeout")
 		}
 		if req.File != nil {
@@ -373,7 +378,7 @@ func TestCommittedJobReconcilesWithoutSourceFile(t *testing.T) {
 	}
 	_, acc := h.env.AddAccount(enginetest.AccountSpec{Platform: "youtube", ExternalID: "ch1", Refreshable: true})
 	h.start(t)
-	path = h.env.VideoFile("gone.mp4", 4096)
+	path = h.env.VideoFile("changed.mp4", 4096)
 	sub, err := h.svc.SubmitUpload(service.UploadInput{FilePath: path, AccountIDs: []string{acc.ID}, Title: "T"})
 	if err != nil {
 		t.Fatal(err)
