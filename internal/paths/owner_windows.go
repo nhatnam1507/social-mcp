@@ -3,6 +3,8 @@
 package paths
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -68,13 +70,16 @@ func restrictToCurrentUser(path string) error {
 		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, acl, nil)
 }
 
-// privateDirName includes the user's SID, so accounts sharing a temp dir (services, SYSTEM)
-// never share a socket directory.
+// privateDirName is derived from the user's SID, so accounts sharing a temp dir (services,
+// SYSTEM) never share a socket directory. A short hash keeps the socket path within the
+// AF_UNIX length limit; a full SID is up to ~180 characters.
 func privateDirName() string {
+	id := os.Getenv("USERNAME")
 	if user, err := windows.GetCurrentProcessToken().GetTokenUser(); err == nil {
-		return "social-mcp-" + user.User.Sid.String()
+		id = user.User.Sid.String()
 	}
-	return "social-mcp-" + os.Getenv("USERNAME")
+	sum := sha256.Sum256([]byte(id))
+	return "social-mcp-" + hex.EncodeToString(sum[:])[:12]
 }
 
 // CheckOwned is a no-op on Windows; the socket lives in a per-user directory that

@@ -85,7 +85,7 @@ publish twice.
   your profile.
 - The CLI talks to the daemon over a local socket in the home directory. When that path would be too long for
   the OS, the socket goes in a private per-user folder in the temp directory. On Unix the CLI refuses a socket
-  owned by another user. On Windows the folder name includes your account's SID.
+  owned by another user. On Windows the folder name is derived from your account's SID.
 - On Windows, the access list is only applied when `SOCIAL_MCP_HOME` is a directory used only by social-mcp; a
   shared directory is left unchanged with a warning.
 - The MCP endpoint listens only on `127.0.0.1`/`[::1]`. It requires the bearer token and rejects foreign

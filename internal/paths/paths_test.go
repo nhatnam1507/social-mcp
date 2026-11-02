@@ -87,7 +87,7 @@ func TestSocketPathFallsBackWhenTooLong(t *testing.T) {
 	}
 	long := filepath.Join(os.TempDir(), strings.Repeat("x", 120))
 	got := SocketPath(long)
-	if filepath.Dir(got) != socketDir() || len(got) > maxSocketPath+10 {
+	if filepath.Dir(got) != socketDir() || len(got) > 104 {
 		t.Fatalf("long home socket %q not in the private socket dir %q", got, socketDir())
 	}
 	if !strings.HasPrefix(filepath.Base(socketDir()), "social-mcp-") {
