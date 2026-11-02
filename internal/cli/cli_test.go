@@ -38,6 +38,8 @@ func run(t *testing.T, svc service.Service, args ...string) (string, error) {
 	h := t.TempDir()
 	resolveHome = func() (string, error) { return h, nil }
 	dialService = func(string) service.Service { return svc }
+	probeStatus = func(string) (service.StatusView, error) { return svc.Status() }
+	daemonRunning = func(string) bool { return false }
 	var out bytes.Buffer
 	root := NewRoot("test", &out, &out)
 	root.SetArgs(args)
@@ -125,5 +127,26 @@ func TestConfigMCPPrintsSnippet(t *testing.T) {
 	}
 	if !strings.Contains(out, "claude mcp add --transport http social-mcp http://127.0.0.1:8765/mcp") || !strings.Contains(out, `"args": ["mcp"]`) {
 		t.Fatalf("output %q", out)
+	}
+}
+
+func TestStatusRunningWithoutSocket(t *testing.T) {
+	h := t.TempDir()
+	resolveHome = func() (string, error) { return h, nil }
+	probeStatus = func(string) (service.StatusView, error) { return service.StatusView{}, control.ErrDaemonNotRunning }
+	daemonRunning = func(string) bool { return true }
+	var out bytes.Buffer
+	root := NewRoot("test", &out, &out)
+	root.SetArgs([]string{"daemon", "status"})
+	err := root.Execute()
+	var ee *ExitError
+	if !errors.As(err, &ee) || ee.Code != 4 || !strings.Contains(out.String(), "running") {
+		t.Fatalf("status with lock held and no socket: %q %v", out.String(), err)
+	}
+}
+
+func TestLogsRejectsNegativeLines(t *testing.T) {
+	if _, err := run(t, &stubService{}, "daemon", "logs", "-n", "-1"); err == nil {
+		t.Fatal("negative --lines accepted")
 	}
 }

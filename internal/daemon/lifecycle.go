@@ -3,6 +3,7 @@ package daemon
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
@@ -18,12 +19,16 @@ import (
 // daemon.log, then waits for it to answer on the control socket.
 func Start(home string, timeout time.Duration) (service.StatusView, error) {
 	client := control.NewClient(paths.SocketPath(home))
-	if st, err := client.Status(); err == nil {
+	if st, err := client.StatusWithin(probeTimeout); err == nil {
 		return st, ErrAlreadyRunning
+	}
+	if locked(home) {
+		return service.StatusView{}, ErrUnresponsive
 	}
 	if _, err := paths.Ensure(home); err != nil {
 		return service.StatusView{}, err
 	}
+	rotateLog(paths.Log(home))
 	exe, err := os.Executable()
 	if err != nil {
 		return service.StatusView{}, err
@@ -34,6 +39,7 @@ func Start(home string, timeout time.Duration) (service.StatusView, error) {
 	}
 	defer logf.Close()
 	cmd := exec.Command(exe, "daemon", "run", "--detached")
+	cmd.Dir = home // do not pin the caller's working directory
 	cmd.Env = append(os.Environ(), paths.EnvHome+"="+home)
 	cmd.Stdout, cmd.Stderr = logf, logf
 	if err := startDetached(cmd); err != nil {
@@ -44,7 +50,7 @@ func Start(home string, timeout time.Duration) (service.StatusView, error) {
 
 	deadline := time.After(timeout)
 	for {
-		if st, err := client.Status(); err == nil {
+		if st, err := client.StatusWithin(probeTimeout); err == nil {
 			return st, nil
 		}
 		select {
@@ -65,7 +71,9 @@ func Stop(home string, timeout time.Duration) (forced bool, err error) {
 	if errors.Is(shutdownErr, control.ErrDaemonNotRunning) && !locked(home) {
 		return false, control.ErrDaemonNotRunning
 	}
-	if waitUnlocked(home, timeout) {
+	// If the shutdown request could not be delivered, waiting is pointless: go straight to
+	// terminating the lock holder.
+	if shutdownErr == nil && waitUnlocked(home, timeout) {
 		return false, nil
 	}
 	pid, perr := readPID(paths.PID(home))
@@ -82,6 +90,21 @@ func Stop(home string, timeout time.Duration) (forced bool, err error) {
 		return true, fmt.Errorf("daemon pid %d is still running", pid)
 	}
 	return true, nil
+}
+
+// ErrUnresponsive means a daemon holds the lock but its control socket does not answer.
+var ErrUnresponsive = errors.New("a daemon is running but its control socket does not answer; run `social-mcp daemon stop`")
+
+const (
+	probeTimeout = 2 * time.Second
+	maxLogBytes  = 10 << 20
+)
+
+// rotateLog keeps one previous log once daemon.log exceeds maxLogBytes.
+func rotateLog(path string) {
+	if fi, err := os.Stat(path); err == nil && fi.Size() > maxLogBytes {
+		os.Rename(path, path+".1")
+	}
 }
 
 // Running reports whether a daemon holds the lock for home.
@@ -120,7 +143,7 @@ func readPID(path string) (int, error) {
 }
 
 func tail(path string, n int) string {
-	b, err := os.ReadFile(path)
+	b, err := ReadTail(path, 64<<10)
 	if err != nil {
 		return ""
 	}
@@ -129,4 +152,24 @@ func tail(path string, n int) string {
 		lines = lines[len(lines)-n:]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// ReadTail returns at most the last limit bytes of path.
+func ReadTail(path string, limit int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	start := max(fi.Size()-limit, 0)
+	buf := make([]byte, fi.Size()-start)
+	_, err = f.ReadAt(buf, start)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	return buf, nil
 }

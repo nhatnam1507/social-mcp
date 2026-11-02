@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/nhatnam1507/social-mcp/internal/control"
+	"github.com/nhatnam1507/social-mcp/internal/daemon"
 	"github.com/nhatnam1507/social-mcp/internal/paths"
 	"github.com/nhatnam1507/social-mcp/internal/service"
 )
@@ -30,6 +32,14 @@ func (e *ExitError) Error() string {
 var dialService = func(home string) service.Service {
 	return control.NewClient(paths.SocketPath(home))
 }
+
+// probeStatus asks the daemon for its status with a short deadline; replaced in tests.
+var probeStatus = func(home string) (service.StatusView, error) {
+	return control.NewClient(paths.SocketPath(home)).StatusWithin(3 * time.Second)
+}
+
+// daemonRunning reports whether a daemon holds the process lock; replaced in tests.
+var daemonRunning = daemon.Running
 
 // resolveHome finds the home directory; replaced in tests.
 var resolveHome = paths.ResolveHome

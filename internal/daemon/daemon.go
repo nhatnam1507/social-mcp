@@ -90,6 +90,9 @@ func Run(ctx context.Context, o Options) error {
 	if sock == "" {
 		sock = paths.SocketPath(o.Home)
 	}
+	if err := paths.EnsureSocketDir(sock); err != nil {
+		return fmt.Errorf("socket directory for %s: %w", sock, err)
+	}
 	if err := os.Remove(sock); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("remove stale socket %s: %w", sock, err)
 	}
@@ -233,6 +236,9 @@ func listenLoopback(port int, ephemeral bool, log *slog.Logger) ([]net.Listener,
 }
 
 func isAddrInUse(err error) bool {
+	if errors.Is(err, errAddrInUse) {
+		return true
+	}
 	s := strings.ToLower(err.Error())
 	return strings.Contains(s, "address already in use") || strings.Contains(s, "only one usage of each socket address")
 }

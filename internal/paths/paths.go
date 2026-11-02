@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 // EnvHome overrides the home directory.
@@ -61,13 +62,32 @@ func PID(home string) string { return filepath.Join(home, "daemon.pid") }
 // Log returns the path of the daemon log file.
 func Log(home string) string { return filepath.Join(home, "daemon.log") }
 
-// SocketPath returns the control socket path: home/daemon.sock, or a short path in the
-// system temp dir when the former would exceed AF_UNIX path limits.
+// SocketPath returns the control socket path: home/daemon.sock, or, when that would exceed
+// AF_UNIX path limits, a short path in a directory private to the current user
+// ($XDG_RUNTIME_DIR on Linux, otherwise a per-user directory under the system temp dir).
 func SocketPath(home string) string {
 	p := filepath.Join(home, "daemon.sock")
 	if len(p) <= maxSocketPath {
 		return p
 	}
 	sum := sha256.Sum256([]byte(home))
-	return filepath.Join(os.TempDir(), "social-mcp-"+hex.EncodeToString(sum[:])[:12]+".sock")
+	return filepath.Join(socketDir(), "social-mcp-"+hex.EncodeToString(sum[:])[:12]+".sock")
+}
+
+func socketDir() string {
+	if d := os.Getenv("XDG_RUNTIME_DIR"); runtime.GOOS == "linux" && filepath.IsAbs(d) {
+		return d
+	}
+	return filepath.Join(os.TempDir(), privateDirName())
+}
+
+// EnsureSocketDir creates the socket's directory when it is outside home and verifies it is
+// a private directory owned by the current user.
+func EnsureSocketDir(sock string) error {
+	dir := filepath.Dir(sock)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	_, err := checkHome(dir)
+	return err
 }

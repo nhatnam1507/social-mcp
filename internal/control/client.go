@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/nhatnam1507/social-mcp/internal/paths"
 	"github.com/nhatnam1507/social-mcp/internal/service"
 )
 
@@ -31,6 +32,9 @@ var _ service.Service = (*Client)(nil)
 func NewClient(socket string) *Client {
 	tr := &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			if err := paths.CheckOwned(socket); err != nil {
+				return nil, err
+			}
 			var d net.Dialer
 			return d.DialContext(ctx, "unix", socket)
 		},
@@ -38,10 +42,12 @@ func NewClient(socket string) *Client {
 	return &Client{socket: socket, http: &http.Client{Transport: tr, Timeout: 60 * time.Second}}
 }
 
-// Ping reports whether the daemon answers.
-func (c *Client) Ping() bool {
-	_, err := c.Status()
-	return err == nil
+// StatusWithin is Status with a short deadline, for probing whether the daemon answers.
+func (c *Client) StatusWithin(d time.Duration) (service.StatusView, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), d)
+	defer cancel()
+	var v service.StatusView
+	return v, c.doCtx(ctx, http.MethodGet, "/v1/status", nil, &v)
 }
 
 // Shutdown asks the daemon to exit.
@@ -106,6 +112,10 @@ func (c *Client) CancelUpload(id string) (service.JobView, error) {
 }
 
 func (c *Client) do(method, path string, body, out any) error {
+	return c.doCtx(context.Background(), method, path, body, out)
+}
+
+func (c *Client) doCtx(ctx context.Context, method, path string, body, out any) error {
 	var rd io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -114,7 +124,7 @@ func (c *Client) do(method, path string, body, out any) error {
 		}
 		rd = bytes.NewReader(b)
 	}
-	req, err := http.NewRequest(method, "http://social-mcp"+path, rd)
+	req, err := http.NewRequestWithContext(ctx, method, "http://social-mcp"+path, rd)
 	if err != nil {
 		return err
 	}

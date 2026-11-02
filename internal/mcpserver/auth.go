@@ -24,8 +24,8 @@ func Protect(next http.Handler, port int, token string) http.Handler {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
-		got, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if !ok || got == "" || len(want) == 0 || subtle.ConstantTimeCompare([]byte(got), want) != 1 {
+		scheme, got, ok := strings.Cut(r.Header.Get("Authorization"), " ")
+		if !ok || !strings.EqualFold(scheme, "Bearer") || got == "" || len(want) == 0 || subtle.ConstantTimeCompare([]byte(got), want) != 1 {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="social-mcp"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return

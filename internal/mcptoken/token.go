@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -26,27 +27,51 @@ func Load(path string) (string, error) {
 // LoadOrCreate returns the token at path, creating it if the file does not exist.
 func LoadOrCreate(path string) (string, error) {
 	tok, err := Load(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return Rotate(path)
+	if !errors.Is(err, os.ErrNotExist) {
+		return tok, err
 	}
-	return tok, err
+	tmp, err := writeTemp(path)
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(tmp)
+	// Link fails if another process created the file first; either way, the file is the truth.
+	if err := os.Link(tmp, path); err != nil && !errors.Is(err, os.ErrExist) {
+		return "", err
+	}
+	return Load(path)
 }
 
 // Rotate writes a new token atomically and returns it.
 func Rotate(path string) (string, error) {
+	tmp, err := writeTemp(path)
+	if err != nil {
+		return "", err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return "", err
+	}
+	return Load(path)
+}
+
+// writeTemp writes a fresh token to a unique temp file next to path.
+func writeTemp(path string) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	tok := hex.EncodeToString(b)
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(tok+"\n"), 0o600); err != nil {
+	f, err := os.CreateTemp(filepath.Dir(path), ".mcp-token-*")
+	if err != nil {
 		return "", err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	_, werr := f.WriteString(hex.EncodeToString(b) + "\n")
+	cerr := f.Close()
+	if err := errors.Join(werr, cerr, os.Chmod(f.Name(), 0o600)); err != nil {
+		os.Remove(f.Name())
 		return "", err
 	}
-	return tok, nil
+	return f.Name(), nil
 }
 
 func valid(tok string) bool {

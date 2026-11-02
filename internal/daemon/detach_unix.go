@@ -7,6 +7,9 @@ import (
 	"syscall"
 )
 
+// errAddrInUse is the errno for a port another process owns.
+var errAddrInUse error = syscall.EADDRINUSE
+
 func startDetached(cmd *exec.Cmd) error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	return cmd.Start()

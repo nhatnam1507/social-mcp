@@ -20,6 +20,7 @@ func TestProtect(t *testing.T) {
 		{"empty bearer", "127.0.0.1:8765", "", "Bearer ", http.StatusUnauthorized},
 		{"wrong token", "localhost:8765", "", "Bearer nope", http.StatusUnauthorized},
 		{"ok ipv4", "127.0.0.1:8765", "", "Bearer " + token, http.StatusTeapot},
+		{"lowercase scheme", "127.0.0.1:8765", "", "bearer " + token, http.StatusTeapot},
 		{"ok ipv6 with local origin", "[::1]:8765", "http://[::1]:8765", "Bearer " + token, http.StatusTeapot},
 	}
 	for _, tc := range cases {

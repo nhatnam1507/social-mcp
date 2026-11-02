@@ -76,3 +76,11 @@ func TestPlatformAvailability(t *testing.T) {
 		t.Fatalf("availability wrong: yt=%v tt=%v meta=%v", cfg.YouTubeEnabled(), cfg.TikTokEnabled(), cfg.MetaEnabled())
 	}
 }
+
+func TestUnknownKeysRejected(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	os.WriteFile(path, []byte("[youtube]\nclient-id = \"x\"\n"), 0o600)
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "client-id") {
+		t.Fatalf("typo accepted: %v", err)
+	}
+}

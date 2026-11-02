@@ -45,9 +45,9 @@ The agent calls `list_accounts`, then `upload_video`, then polls `get_upload_sta
 | Command | Purpose |
 |---|---|
 | `daemon start` / `stop` | Start in the background / stop (running uploads resume on the next start) |
-| `daemon status [--json]` | Show status; exit code 3 when stopped |
+| `daemon status [--json]` | Show status; exit code 3 when stopped, 4 when running but its control socket does not answer |
 | `daemon logs [-n N] [-f]` | Show or follow the daemon log |
-| `daemon run` | Run in the foreground (for systemd, launchd or other service managers) |
+| `daemon run` | Run in the foreground for systemd, launchd or other service managers; logs go to stderr, not `daemon.log` |
 | `account add <youtube\|tiktok\|facebook\|instagram> [--no-browser]` | Connect accounts through browser sign-in |
 | `account list [--platform P] [--json]` | List accounts with health and restrictions |
 | `account reauth <id>` | Sign in again when an account shows `needs_reauth` or `expiring` |
@@ -79,7 +79,13 @@ publish twice.
 ## Security model
 
 - Tokens are encrypted with AES-256-GCM in a local SQLite database. The key is in the OS keyring, or in a
-  `0600` key file when no keyring is available. Windows relies on your user profile's permissions.
+  `0600` key file when no keyring is available.
+- The home directory is private to you. On Unix it must be owned by you and is kept at mode `0700`. On
+  Windows it gets an access list that allows only your account, even when `SOCIAL_MCP_HOME` points outside
+  your profile.
+- The CLI talks to the daemon over a local socket in the home directory. When that path would be too long for
+  the OS, the socket goes in `$XDG_RUNTIME_DIR` (Linux) or a private per-user folder in the temp directory,
+  and the CLI refuses a socket owned by another user.
 - The MCP endpoint listens only on `127.0.0.1`/`[::1]`. It requires the bearer token and rejects foreign
   `Host` and `Origin` headers, which blocks DNS rebinding and web pages.
 - Agents cannot connect or remove accounts; only the CLI can.

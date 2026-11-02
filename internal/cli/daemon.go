@@ -43,6 +43,9 @@ func daemonStartCmd() *cobra.Command {
 				fmt.Fprintf(out, "daemon is already running (pid %d)\n", st.PID)
 				return nil
 			}
+			if errors.Is(err, daemon.ErrUnresponsive) {
+				return &ExitError{Code: 4, Err: err}
+			}
 			if err != nil {
 				return err
 			}
@@ -71,7 +74,7 @@ func daemonStopCmd() *cobra.Command {
 				return err
 			}
 			if forced {
-				fmt.Fprintln(cmd.OutOrStdout(), "daemon did not exit in time and was terminated")
+				fmt.Fprintln(cmd.OutOrStdout(), "daemon did not respond to the shutdown request and was terminated")
 			} else {
 				fmt.Fprintln(cmd.OutOrStdout(), "daemon stopped")
 			}
@@ -91,8 +94,13 @@ func daemonStatusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			st, err := dialService(h).Status()
+			st, err := probeStatus(h)
 			out := cmd.OutOrStdout()
+			if err != nil && daemonRunning(h) {
+				// The process lock is held: the daemon runs even though its socket does not answer.
+				fmt.Fprintln(out, "running (process lock held), but the control socket does not answer; run `social-mcp daemon stop`")
+				return &ExitError{Code: 4}
+			}
 			if errors.Is(err, control.ErrDaemonNotRunning) {
 				fmt.Fprintln(out, "stopped")
 				return &ExitError{Code: 3}
@@ -138,6 +146,9 @@ func daemonLogsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if lines < 0 {
+				return fmt.Errorf("--lines must not be negative")
+			}
 			return tailFile(cmd.Context(), cmd.OutOrStdout(), paths.Log(h), lines, follow)
 		},
 	}
@@ -159,6 +170,12 @@ func daemonRunCmd(version string) *cobra.Command {
 			}
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
+			go func() {
+				// After the first signal, restore default handling so a second one (or the
+				// SIGTERM sent by `daemon stop` after its timeout) ends a stuck shutdown.
+				<-ctx.Done()
+				stop()
+			}()
 			log := slog.New(logx.NewHandler(slog.NewTextHandler(cmd.ErrOrStderr(), nil)))
 			err = daemon.Run(ctx, daemon.Options{Home: h, Version: version, Log: log})
 			if err != nil {
@@ -173,7 +190,7 @@ func daemonRunCmd(version string) *cobra.Command {
 }
 
 func tailFile(ctx context.Context, w io.Writer, path string, lines int, follow bool) error {
-	data, err := os.ReadFile(path)
+	data, err := daemon.ReadTail(path, 4<<20)
 	if errors.Is(err, os.ErrNotExist) && !follow {
 		fmt.Fprintf(w, "no log yet at %s\n", path)
 		return nil
@@ -190,7 +207,10 @@ func tailFile(ctx context.Context, w io.Writer, path string, lines int, follow b
 	if !follow {
 		return nil
 	}
-	offset := int64(len(data))
+	offset := int64(0)
+	if fi, err := os.Stat(path); err == nil {
+		offset = fi.Size()
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
