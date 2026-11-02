@@ -5,6 +5,9 @@ import (
 
 	"github.com/nhatnam1507/social-mcp/internal/config"
 	"github.com/nhatnam1507/social-mcp/internal/provider"
+	"github.com/nhatnam1507/social-mcp/internal/provider/facebook"
+	"github.com/nhatnam1507/social-mcp/internal/provider/instagram"
+	"github.com/nhatnam1507/social-mcp/internal/provider/meta"
 	"github.com/nhatnam1507/social-mcp/internal/provider/tiktok"
 	"github.com/nhatnam1507/social-mcp/internal/provider/youtube"
 )
@@ -18,6 +21,14 @@ func buildProviders(cfg config.Config, log *slog.Logger) provider.Registry {
 	}
 	if cfg.TikTokEnabled() {
 		reg["tiktok"] = tiktok.New(cfg.TikTok.ClientKey, cfg.TikTok.ClientSecret)
+	}
+	if cfg.MetaEnabled() {
+		c := meta.NewClient(meta.Config{
+			AppID: cfg.Meta.AppID, AppSecret: cfg.Meta.AppSecret, LoginConfigID: cfg.Meta.LoginConfigID,
+			GraphVersion: cfg.Meta.GraphVersion, AppMode: cfg.Meta.AppMode,
+		})
+		reg["facebook"] = facebook.New(c)
+		reg["instagram"] = instagram.New(c)
 	}
 	return reg
 }

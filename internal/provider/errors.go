@@ -16,9 +16,13 @@ var (
 )
 
 // PermanentError is a failure that retrying cannot fix (quota, policy, validation).
-type PermanentError struct{ Msg string }
+type PermanentError struct {
+	Msg string
+	Err error // optional cause
+}
 
 func (e *PermanentError) Error() string { return e.Msg }
+func (e *PermanentError) Unwrap() error { return e.Err }
 
 // Permanent returns a PermanentError.
 func Permanent(format string, args ...any) error {

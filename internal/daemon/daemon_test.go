@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nhatnam1507/social-mcp/internal/config"
 	"github.com/nhatnam1507/social-mcp/internal/control"
 	"github.com/nhatnam1507/social-mcp/internal/enginetest"
 	"github.com/nhatnam1507/social-mcp/internal/paths"
@@ -287,5 +288,19 @@ func TestCallbackHandler(t *testing.T) {
 	sess, _ = env.Sessions.Get(start.SessionID)
 	if rec := get("state=" + sess.State + "&code=abc"); strings.Contains(rec.Body.String(), "LEAKME") {
 		t.Fatalf("secret on callback page: %s", rec.Body.String())
+	}
+}
+
+func TestBuildProvidersFollowsConfig(t *testing.T) {
+	cfg := config.Default()
+	if got := buildProviders(cfg, slog.Default()).Platforms(); len(got) != 0 {
+		t.Fatalf("empty config registered %v", got)
+	}
+	cfg.YouTube = config.YouTube{ClientID: "a", ClientSecret: "b"}
+	cfg.TikTok = config.TikTok{ClientKey: "a", ClientSecret: "b"}
+	cfg.Meta.AppID, cfg.Meta.AppSecret, cfg.Meta.LoginConfigID = "a", "b", "c"
+	got := strings.Join(buildProviders(cfg, slog.Default()).Platforms(), ",")
+	if got != "facebook,instagram,tiktok,youtube" {
+		t.Fatalf("platforms = %s", got)
 	}
 }
