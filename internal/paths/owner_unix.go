@@ -53,3 +53,10 @@ func CheckOwned(path string) error {
 	}
 	return nil
 }
+
+// ensurePrivateDir fails unless dir is a non-symlink directory owned by the current user;
+// group/other permission bits are removed.
+func ensurePrivateDir(dir string) error {
+	_, err := checkHome(dir)
+	return err
+}

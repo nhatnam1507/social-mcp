@@ -205,7 +205,7 @@ func (p *Provider) publish(ctx context.Context, req provider.UploadRequest, st r
 	case errors.As(err, &rl):
 		// Refused outright: nothing was published. Record that so the retry may publish.
 		st.PublishRejected = true
-		if perr := progress(provider.ProgressUpdate{Phase: provider.PhaseCommitting, Resume: mustJSON(st)}); perr != nil {
+		if perr := progress(provider.ProgressUpdate{BytesSent: req.FileSize, Phase: provider.PhaseCommitting, Resume: mustJSON(st)}); perr != nil {
 			return provider.Result{}, perr
 		}
 		return provider.Result{}, err
@@ -226,12 +226,15 @@ func (p *Provider) reconcile(ctx context.Context, req provider.UploadRequest, st
 	}
 	s, err := p.status(ctx, req, st.ContainerID)
 	switch {
+	case err != nil && st.PublishRejected && !provider.IsPermanent(err) && !errors.Is(err, provider.ErrReauthRequired):
+		// Known unpublished: a throttled or failed status check just means try again later.
+		return provider.Result{}, err
 	case err == nil && s.StatusCode == "PUBLISHED":
 		return p.finish(ctx, req, "")
 	case err == nil && s.StatusCode == "FINISHED" && st.PublishRejected && progress != nil:
 		// Clear the flag before publishing, so a lost response cannot lead to a second publish.
 		st.PublishRejected = false
-		if perr := progress(provider.ProgressUpdate{Phase: provider.PhaseCommitting, Resume: mustJSON(st)}); perr != nil {
+		if perr := progress(provider.ProgressUpdate{BytesSent: req.FileSize, Phase: provider.PhaseCommitting, Resume: mustJSON(st)}); perr != nil {
 			return provider.Result{}, perr
 		}
 		return p.publish(ctx, req, st, progress)

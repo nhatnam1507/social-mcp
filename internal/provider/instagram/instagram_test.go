@@ -32,6 +32,7 @@ type fakeIG struct {
 	quotaUsed    int
 	losePublish  bool
 	throttle     int   // answer media_publish with a rate limit this many times
+	throttleGet  int   // answer container status GETs with a rate limit this many times
 	failUploadAt int64 // stop accepting after this many bytes (simulate interruption)
 	lastCaption  string
 }
@@ -83,6 +84,10 @@ func (f *fakeIG) server(t *testing.T) *httptest.Server {
 			}
 			f.received.Write(data)
 			fmt.Fprint(w, `{"success":true,"message":"Upload successful."}`)
+		case strings.HasPrefix(r.URL.Path, "/graph/c") && f.throttleGet > 0:
+			f.throttleGet--
+			w.WriteHeader(400)
+			fmt.Fprint(w, `{"error":{"code":17,"message":"user request limit reached"}}`)
 		case strings.HasPrefix(r.URL.Path, "/graph/c"):
 			st := "IN_PROGRESS"
 			if f.total > 0 && int64(f.received.Len()) == f.total {
@@ -289,5 +294,23 @@ func TestThrottledPublishIsRetriedOnce(t *testing.T) {
 	json.Unmarshal(rec.resume, &st)
 	if st.PublishRejected {
 		t.Fatal("publish_rejected flag not cleared before publishing")
+	}
+}
+
+func TestThrottledStatusKeepsRejectedPublishQueued(t *testing.T) {
+	f := &fakeIG{}
+	p := testProvider(f.server(t))
+	data := []byte("reel")
+	f.total, f.containers = int64(len(data)), 1
+	f.received.Write(data)
+	f.throttleGet = 1
+	rec := &recorder{phase: provider.PhaseCommitting, resume: json.RawMessage(`{"container_id":"c1","publish_rejected":true}`)}
+	_, err := p.Upload(context.Background(), req(data, rec), rec.progress)
+	var rl *provider.RateLimitError
+	if !errors.As(err, &rl) || f.publishes != 0 {
+		t.Fatalf("err %v publishes %d", err, f.publishes)
+	}
+	if res, err := p.Upload(context.Background(), req(data, rec), rec.progress); err != nil || f.publishes != 1 || res.RemoteID != "m1" {
+		t.Fatalf("retry: %+v %v publishes=%d", res, err, f.publishes)
 	}
 }

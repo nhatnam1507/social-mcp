@@ -85,6 +85,5 @@ func EnsureSocketDir(sock string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	_, err := checkHome(dir)
-	return err
+	return ensurePrivateDir(dir)
 }

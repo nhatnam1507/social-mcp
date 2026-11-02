@@ -79,6 +79,11 @@ func Run(ctx context.Context, o Options) error {
 		return fmt.Errorf("lock %s: %w", paths.Lock(o.Home), err)
 	}
 	defer lock.unlock()
+	// Write the pid while holding the lock, so `daemon stop` never signals a stale pid.
+	if err := writePID(paths.PID(o.Home)); err != nil {
+		return err
+	}
+	defer os.Remove(paths.PID(o.Home))
 
 	cfg, err := config.Load(paths.Config(o.Home))
 	if err != nil {
@@ -119,10 +124,6 @@ func Run(ctx context.Context, o Options) error {
 	if err != nil {
 		return err
 	}
-	if err := writePID(paths.PID(o.Home)); err != nil {
-		return err
-	}
-	defer os.Remove(paths.PID(o.Home))
 	st, err := store.Open(paths.DB(o.Home))
 	if err != nil {
 		return err

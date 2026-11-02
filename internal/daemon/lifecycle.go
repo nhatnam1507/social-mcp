@@ -91,7 +91,7 @@ func Stop(home string, timeout time.Duration) (forced bool, err error) {
 	}
 	// SIGTERM can be swallowed by a daemon already inside a stuck shutdown; the lock is still
 	// held by this pid, so end it.
-	if locked(home) {
+	if current, perr := readPID(paths.PID(home)); locked(home) && perr == nil && current == pid {
 		if err := signalKill(pid); err != nil {
 			return true, fmt.Errorf("kill daemon pid %d: %w", pid, err)
 		}

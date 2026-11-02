@@ -299,7 +299,10 @@ func (r *Runner) progress(jobID string, ctl *jobCtl, st *attemptState, u provide
 		st.resume = u.Resume
 	}
 	st.bytes = u.BytesSent
-	if !phaseChanged && time.Since(st.lastWrite) < r.o.ProgressEvery {
+	// Phase changes, and any resume-state change once a job may publish, must be stored before
+	// the provider takes its next step; they are never throttled and their failure is fatal.
+	mustPersist := phaseChanged || (u.Resume != nil && provider.PhaseAtLeast(st.phase, provider.PhaseCommitting))
+	if !mustPersist && time.Since(st.lastWrite) < r.o.ProgressEvery {
 		return nil
 	}
 	phase, resume, bytes := st.phase, st.resume, st.bytes
@@ -315,7 +318,7 @@ func (r *Runner) progress(jobID string, ctl *jobCtl, st *attemptState, u provide
 		}
 		time.Sleep(time.Duration(i+1) * 50 * time.Millisecond)
 	}
-	if phaseChanged {
+	if mustPersist {
 		return fmt.Errorf("persist upload phase: %w", err)
 	}
 	r.o.Log.Warn("persist upload progress", "job", jobID, "err", err)

@@ -418,12 +418,51 @@ func TestRateLimitCapCountsFromFirstLimit(t *testing.T) {
 	}
 	_, acc := h.env.AddAccount(enginetest.AccountSpec{Platform: "youtube", ExternalID: "ch1", Refreshable: true})
 	id := h.submit(t, acc.ID)[0]
-	// The job has been queued for days, but this is its first rate limit: it must be retried.
-	if _, err := h.env.Store.TransitionUpload(id, store.StatusQueued, store.StatusQueued, store.UploadFields{}); err != nil {
-		t.Fatal(err)
-	}
+	// No earlier rate-limit streak: the first rate limit is always retried.
 	h.start(t)
 	if u := waitStatus(t, h.env.Store, id, store.StatusSucceeded, store.StatusFailed); u.Status != store.StatusSucceeded {
 		t.Fatalf("status=%s error=%q", u.Status, u.Error)
+	}
+}
+
+func TestRateLimitCapFiresAfterStreak(t *testing.T) {
+	h := newHarness(t, "youtube")
+	h.env.Fake("youtube").UploadFunc = func(context.Context, int, provider.UploadRequest, provider.Progress) (provider.Result, error) {
+		return provider.Result{}, &provider.RateLimitError{RetryAfter: time.Millisecond, Msg: "slow"}
+	}
+	_, acc := h.env.AddAccount(enginetest.AccountSpec{Platform: "youtube", ExternalID: "ch1", Refreshable: true})
+	id := h.submit(t, acc.ID)[0]
+	since := time.Now().Add(-25 * time.Hour)
+	if _, err := h.env.Store.TransitionUpload(id, store.StatusQueued, store.StatusQueued, store.UploadFields{RateLimitedSince: &since}); err != nil {
+		t.Fatal(err)
+	}
+	h.start(t)
+	u := waitStatus(t, h.env.Store, id, store.StatusFailed)
+	if !strings.Contains(u.Error, "still rate limited") {
+		t.Fatalf("error %q", u.Error)
+	}
+}
+
+func TestCommittedResumeChangeMustPersist(t *testing.T) {
+	h := newHarness(t, "instagram")
+	var persistErr error
+	h.env.Fake("instagram").UploadFunc = func(ctx context.Context, call int, req provider.UploadRequest, p provider.Progress) (provider.Result, error) {
+		if err := p(provider.ProgressUpdate{Phase: provider.PhaseCommitting, Resume: json.RawMessage(`{"a":1}`)}); err != nil {
+			return provider.Result{}, err
+		}
+		// Close the store so the next must-persist write fails; it must surface as an error.
+		h.env.Store.Close()
+		persistErr = p(provider.ProgressUpdate{Resume: json.RawMessage(`{"a":2}`)})
+		return provider.Result{}, persistErr
+	}
+	_, acc := h.env.AddAccount(enginetest.AccountSpec{Platform: "instagram", ExternalID: "ig1"})
+	h.submit(t, acc.ID)
+	h.start(t)
+	deadline := time.Now().Add(5 * time.Second)
+	for persistErr == nil && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if persistErr == nil {
+		t.Fatal("a failed resume write after committing was swallowed")
 	}
 }

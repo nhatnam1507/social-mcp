@@ -3,6 +3,7 @@
 package daemon
 
 import (
+	"errors"
 	"os/exec"
 	"syscall"
 )
@@ -15,10 +16,14 @@ func startDetached(cmd *exec.Cmd) error {
 	return cmd.Start()
 }
 
-func signalTerminate(pid int) error {
-	return syscall.Kill(pid, syscall.SIGTERM)
-}
+func signalTerminate(pid int) error { return signal(pid, syscall.SIGTERM) }
 
-func signalKill(pid int) error {
-	return syscall.Kill(pid, syscall.SIGKILL)
+func signalKill(pid int) error { return signal(pid, syscall.SIGKILL) }
+
+// signal treats a process that already exited as success.
+func signal(pid int, sig syscall.Signal) error {
+	if err := syscall.Kill(pid, sig); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return err
+	}
+	return nil
 }

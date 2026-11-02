@@ -77,5 +77,23 @@ func privateDirName() string {
 	return "social-mcp-" + os.Getenv("USERNAME")
 }
 
-// CheckOwned is a no-op on Windows; the socket lives in a per-user, DACL-protected directory.
+// CheckOwned is a no-op on Windows; the socket lives in a per-user directory that
+// ensurePrivateDir restricts to the current user (or refuses to use).
 func CheckOwned(string) error { return nil }
+
+// ensurePrivateDir restricts dir to the current user and fails if that is not possible. Unlike
+// the home check it never degrades to a warning: the control socket must not live in a
+// directory another account can write.
+func ensurePrivateDir(dir string) error {
+	fi, err := os.Stat(dir)
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("%s is not a directory", dir)
+	}
+	if err := restrictToCurrentUser(dir); err != nil {
+		return fmt.Errorf("restrict socket directory %s to the current user: %w", dir, err)
+	}
+	return nil
+}

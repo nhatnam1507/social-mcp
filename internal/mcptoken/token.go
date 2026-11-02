@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Load reads and validates the token at path.
@@ -54,7 +55,13 @@ func LoadOrCreate(path string) (string, error) {
 			return "", cerr
 		}
 	}
-	return Load(path)
+	tok, err = Load(path)
+	for i := 0; err != nil && !errors.Is(err, os.ErrNotExist) && i < 20; i++ {
+		// Another process may still be writing the file it created exclusively.
+		time.Sleep(50 * time.Millisecond)
+		tok, err = Load(path)
+	}
+	return tok, err
 }
 
 // Rotate writes a new token atomically and returns it.
