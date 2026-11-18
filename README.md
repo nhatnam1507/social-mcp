@@ -38,7 +38,7 @@ Then add the server to your MCP client. For Claude Code, run the `claude mcp add
 command that `config mcp` prints. Clients that launch stdio servers can run `social-mcp mcp` instead.
 
 Now ask your agent something like *"upload /home/me/Videos/launch.mp4 to my YouTube channel as unlisted"*.
-The agent calls `list_accounts`, then `upload_video`, then polls `get_upload_status` until it finishes.
+The agent calls `list_accounts`, then `upload_video`, which returns the queued job IDs straight away. Uploads keep running in the daemon; the agent checks `get_upload_status` or `list_uploads` only when you ask about progress or results.
 
 ## CLI
 

@@ -32,6 +32,9 @@ func (f *fakeService) SubmitUpload(in service.UploadInput) (service.UploadSubmis
 	if len(in.AccountIDs) == 0 {
 		return service.UploadSubmission{}, service.Invalid("account_ids must list at least one account")
 	}
+	if in.AccountIDs[0] == "acc_rejected" {
+		return service.UploadSubmission{Jobs: []service.JobRef{}, Rejected: []service.Rejection{{AccountID: "acc_rejected", Reason: "needs reauth"}}}, nil
+	}
 	return service.UploadSubmission{Jobs: []service.JobRef{{JobID: "job_1", AccountID: in.AccountIDs[0]}}, Rejected: []service.Rejection{}}, nil
 }
 
@@ -146,6 +149,55 @@ func TestToolCalls(t *testing.T) {
 	}
 	if res = call(t, cs, "cancel_upload", map[string]any{"job_id": "job_1"}); res.IsError || !strings.Contains(text(res), "cancelled") {
 		t.Fatalf("cancel_upload: %q", text(res))
+	}
+}
+
+func TestUploadGuidanceIsAsynchronous(t *testing.T) {
+	cs := connect(t, &fakeService{})
+
+	instr := cs.InitializeResult().Instructions
+	for _, want := range []string{"Do not wait or poll in a loop", "only when the user asks", "Never call the daemon's HTTP endpoint directly"} {
+		if !strings.Contains(instr, want) {
+			t.Fatalf("instructions lack %q:\n%s", want, instr)
+		}
+	}
+	if strings.Contains(instr, "until its status is") {
+		t.Fatalf("instructions still ask the agent to wait for uploads:\n%s", instr)
+	}
+
+	tools, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, tool := range tools.Tools {
+		if tool.Name != "upload_video" {
+			continue
+		}
+		found = true
+		if strings.Contains(tool.Description, "poll") || !strings.Contains(tool.Description, "when the user asks") {
+			t.Fatalf("upload_video description: %q", tool.Description)
+		}
+	}
+	if !found {
+		t.Fatal("upload_video not listed")
+	}
+
+	res := call(t, cs, "upload_video", map[string]any{"file_path": "/a.mp4", "account_ids": []string{"acc_1"}, "title": "x"})
+	var out struct {
+		Jobs []service.JobRef `json:"jobs"`
+		Note string           `json:"note"`
+	}
+	if err := json.Unmarshal([]byte(text(res)), &out); err != nil || res.IsError {
+		t.Fatalf("upload_video output %q: %v", text(res), err)
+	}
+	if len(out.Jobs) != 1 || out.Note != queuedNote {
+		t.Fatalf("queued upload output: %+v", out)
+	}
+
+	res = call(t, cs, "upload_video", map[string]any{"file_path": "/a.mp4", "account_ids": []string{"acc_rejected"}, "title": "x"})
+	if res.IsError || strings.Contains(text(res), `"note"`) || !strings.Contains(text(res), "needs reauth") {
+		t.Fatalf("all-rejected output should carry no queued note: %q", text(res))
 	}
 }
 
