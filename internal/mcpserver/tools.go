@@ -28,6 +28,15 @@ type uploadVideoIn struct {
 	PlatformOptions map[string]map[string]any `json:"platform_options,omitempty" jsonschema:"per-platform options keyed by platform name; allowed keys are listed in each account's options"`
 }
 
+type uploadVideoOut struct {
+	Jobs     []service.JobRef    `json:"jobs"`
+	Rejected []service.Rejection `json:"rejected"`
+	Note     string              `json:"note,omitempty"`
+}
+
+// queuedNote tells the agent, at the moment it decides what to do next, not to wait on the uploads.
+const queuedNote = "Queued. Uploads run in the background; check status with get_upload_status(job_id) when the user asks."
+
 type jobIn struct {
 	JobID string `json:"job_id" jsonschema:"job_id returned by upload_video"`
 }
@@ -62,14 +71,18 @@ func addTools(s *mcp.Server, svc service.Service) {
 		Name:  "upload_video",
 		Title: "Upload a video",
 		Description: "Publish a local video file to one or more connected accounts on external platforms (YouTube, TikTok drafts, Facebook Pages, Instagram Reels) " +
-			"with the given privacy. Returns one job per accepted account plus the accounts that were rejected and why. Uploads continue in the background; poll get_upload_status.",
+			"with the given privacy. Returns one job per accepted account plus the accounts that were rejected and why. It returns immediately and the uploads continue in the background; check progress later with get_upload_status when the user asks.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: &yes, IdempotentHint: false, OpenWorldHint: &yes},
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in uploadVideoIn) (*mcp.CallToolResult, service.UploadSubmission, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in uploadVideoIn) (*mcp.CallToolResult, uploadVideoOut, error) {
 		sub, err := svc.SubmitUpload(service.UploadInput{
 			FilePath: in.FilePath, AccountIDs: in.AccountIDs, Title: in.Title, Description: in.Description,
 			Tags: in.Tags, Privacy: in.Privacy, PlatformOptions: in.PlatformOptions,
 		})
-		return nil, sub, clean(err)
+		out := uploadVideoOut{Jobs: sub.Jobs, Rejected: sub.Rejected}
+		if len(out.Jobs) > 0 {
+			out.Note = queuedNote
+		}
+		return nil, out, clean(err)
 	})
 
 	mcp.AddTool(s, &mcp.Tool{

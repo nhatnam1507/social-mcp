@@ -12,9 +12,10 @@ const instructions = `social-mcp uploads local video files to the user's connect
 Workflow:
 1. When the user gives a video file path, call list_accounts and pick the accounts the user asked for. If it is unclear which accounts or platforms they mean, ask the user.
 2. Call upload_video with the exact absolute file path, the chosen account_ids, a title, and optionally description, tags and privacy.
-3. Uploads run in the background. Poll get_upload_status for each job until its status is succeeded, failed, cancelled or needs_review, then report the result and URL to the user.
+3. Uploads are asynchronous and keep running in the daemon, even across restarts. After upload_video, tell the user which uploads are queued (with their job IDs) and which accounts were rejected and why. Do not wait or poll in a loop. Call get_upload_status or list_uploads only when the user asks for progress or results, then report the status, outcome and URL.
 
 Rules:
+- Use only these MCP tools to reach social-mcp. Never call the daemon's HTTP endpoint directly or read its token from config files.
 - Privacy defaults to "private". Use "public" only when the user asked for a public post.
 - Respect each account's capabilities.restrictions:
   - draft_only: the video lands in the user's TikTok inbox as a draft; the user adds the caption, chooses privacy and posts in the TikTok app.
