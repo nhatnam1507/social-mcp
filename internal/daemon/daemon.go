@@ -28,6 +28,7 @@ import (
 	"github.com/nhatnam1507/social-mcp/internal/service"
 	"github.com/nhatnam1507/social-mcp/internal/store"
 	"github.com/nhatnam1507/social-mcp/internal/tokens"
+	"github.com/nhatnam1507/social-mcp/internal/update"
 )
 
 var (
@@ -152,9 +153,16 @@ func Run(ctx context.Context, o Options) error {
 		Store: st, Tokens: tm, Registry: reg, AllowedDirs: cfg.Uploads.AllowedDirs, Workers: cfg.Uploads.MaxConcurrent,
 		Serialized: []string{"tiktok", "instagram"}, Log: log,
 	})
+	var checker *update.Checker
+	var updateNotice func() string
+	if update.CheckEnabled(cfg.Updates.Check, o.Version) {
+		checker = &update.Checker{Path: paths.UpdateCheck(o.Home), Version: o.Version, Source: update.NewClient(o.Version), Log: log}
+		updateNotice = checker.TakeNotice
+	}
 	svc := service.NewLocal(service.Options{
 		Store: st, Tokens: tm, Registry: reg, Sessions: oauth.NewSessions(), Jobs: run,
 		AllowedDirs: cfg.Uploads.AllowedDirs, ListenPort: port, Version: o.Version, KeyBackend: key.Backend, StartedAt: time.Now(),
+		UpdateNotice: updateNotice,
 	})
 	if err := run.Start(); err != nil {
 		return err
@@ -168,6 +176,13 @@ func Run(ctx context.Context, o Options) error {
 		defer refreshDone.Done()
 		(&refresher.Refresher{Store: st, Tokens: tm, Log: log}).Run(refreshCtx)
 	}()
+	if checker != nil {
+		refreshDone.Add(1)
+		go func() {
+			defer refreshDone.Done()
+			checker.Run(refreshCtx)
+		}()
+	}
 
 	// 5. Serve.
 	ctrlSrv := &http.Server{Handler: control.NewHandler(svc, stop), ReadHeaderTimeout: 10 * time.Second}

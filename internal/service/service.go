@@ -21,6 +21,9 @@ type Service interface {
 	GetUpload(id string) (JobView, error)
 	ListUploads(f UploadFilter) ([]JobView, error)
 	CancelUpload(id string) (JobView, error)
+	// TakeUpdateNotice returns a one-time message for the agent when a newer release is available,
+	// and "" otherwise.
+	TakeUpdateNotice() (string, error)
 }
 
 // Health values.

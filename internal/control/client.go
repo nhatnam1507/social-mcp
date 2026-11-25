@@ -111,6 +111,11 @@ func (c *Client) CancelUpload(id string) (service.JobView, error) {
 	return v, c.do(http.MethodPost, "/v1/uploads/"+url.PathEscape(id)+"/cancel", nil, &v)
 }
 
+func (c *Client) TakeUpdateNotice() (string, error) {
+	var v string
+	return v, c.do(http.MethodPost, "/v1/update-notice", nil, &v)
+}
+
 func (c *Client) do(method, path string, body, out any) error {
 	return c.doCtx(context.Background(), method, path, body, out)
 }

@@ -61,6 +61,12 @@ func PID(home string) string { return filepath.Join(home, "daemon.pid") }
 // Log returns the path of the daemon log file.
 func Log(home string) string { return filepath.Join(home, "daemon.log") }
 
+// UpdateCheck returns the path of the daemon's record of the latest release.
+func UpdateCheck(home string) string { return filepath.Join(home, "update-check.json") }
+
+// UpdateNoticeCLI returns the path recording the release the CLI last announced.
+func UpdateNoticeCLI(home string) string { return filepath.Join(home, "update-notice-cli") }
+
 // SocketPath returns the control socket path: home/daemon.sock, or, when that would exceed
 // AF_UNIX path limits, a short path in a per-user directory under the system temp dir.
 func SocketPath(home string) string {

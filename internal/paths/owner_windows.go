@@ -40,7 +40,7 @@ func checkHome(home string) (string, error) {
 
 // ownedName reports whether a home entry is one social-mcp creates.
 func ownedName(name string) bool {
-	for _, prefix := range []string{"config.toml", "social-mcp", "master.key", "mcp-token", ".mcp-token", "daemon.", "backups", "journals"} {
+	for _, prefix := range []string{"config.toml", "social-mcp", "master.key", "mcp-token", ".mcp-token", "daemon.", "update-", "backups", "journals"} {
 		if strings.HasPrefix(name, prefix) {
 			return true
 		}

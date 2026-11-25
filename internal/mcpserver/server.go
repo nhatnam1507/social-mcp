@@ -23,7 +23,8 @@ Rules:
   - visible_to_app_roles_only: the Meta app is in development mode, so the post is not visible to the public yet.
 - Never claim a post is public unless the job outcome is "published" and its privacy is "public".
 - needs_review means the platform may or may not have published the video; tell the user to check the platform before uploading again.
-- Accounts with health "needs_reauth" cannot upload; tell the user to run the reauth command shown in health_detail. Agents cannot connect or remove accounts.`
+- Accounts with health "needs_reauth" cannot upload; tell the user to run the reauth command shown in health_detail. Agents cannot connect or remove accounts.
+- If list_accounts returns a notice, pass it on to the user once, in your own words (for example, that a new social-mcp version is available and "social-mcp update" installs it).`
 
 // New returns an MCP server backed by svc.
 func New(svc service.Service, version string) *mcp.Server {

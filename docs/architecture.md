@@ -47,6 +47,8 @@ Everything lives in the home directory (`SOCIAL_MCP_HOME`, or your user config d
 | `master.key` | Encryption key, only when the OS keyring is not used |
 | `mcp-token` | Bearer token for the MCP endpoint |
 | `daemon.lock`, `daemon.pid`, `daemon.sock`, `daemon.log` | Daemon runtime files |
+| `update-check.json` | Latest release found by the daemon's daily check, and the release the agent was last told about |
+| `update-notice-cli` | The release the CLI last announced |
 | `backups/` | Copies of the database (`VACUUM INTO`) taken before schema migrations, newest 5 kept |
 
 How it works:
@@ -120,3 +122,12 @@ How it works:
   removed is reported as running but unreachable (exit code 4), not as stopped. `daemon stop` then terminates
   it directly, escalating to a hard kill if the process ignores the termination signal.
 - **Logs:** `daemon.log` is rotated to `daemon.log.1` at startup once it exceeds 10 MB.
+- **Update check:** a release build of the daemon looks up the latest stable release at most once a day,
+  through the `releases/latest` redirect the installers use (no GitHub API). The CLI and the agent's
+  `list_accounts` each mention a newer release once. Development builds, `[updates] check = false` and
+  `SOCIAL_MCP_NO_UPDATE_CHECK` turn it off. Each state file has one writer: the daemon owns
+  `update-check.json`, the CLI owns `update-notice-cli`.
+- **Self-update:** `social-mcp update` verifies the new binary against `SHA256SUMS` and checks that it reports
+  the expected version before it stops the daemon and swaps the file, so a failed download changes nothing.
+  The daemon is restarted through the new file's path. On Windows the running `.exe` is renamed to
+  `.exe.old`, which is removed on the next update or daemon start.

@@ -16,6 +16,8 @@ type listAccountsIn struct {
 
 type listAccountsOut struct {
 	Accounts []service.AccountView `json:"accounts"`
+	// Notice is a one-time message for the user, such as a new social-mcp release being available.
+	Notice string `json:"notice,omitempty"`
 }
 
 type uploadVideoIn struct {
@@ -64,7 +66,12 @@ func addTools(s *mcp.Server, svc service.Service) {
 		if accs == nil {
 			accs = []service.AccountView{}
 		}
-		return nil, listAccountsOut{Accounts: accs}, clean(err)
+		out := listAccountsOut{Accounts: accs}
+		if err == nil {
+			// Best effort: an older daemon behind `social-mcp mcp` has no notice to give.
+			out.Notice, _ = svc.TakeUpdateNotice()
+		}
+		return nil, out, clean(err)
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
