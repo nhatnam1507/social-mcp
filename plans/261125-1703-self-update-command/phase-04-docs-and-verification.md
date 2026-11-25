@@ -1,0 +1,42 @@
+---
+phase: 4
+title: "Docs and live verification"
+status: in-progress
+priority: P2
+effort: "1.5h"
+dependencies: [2, 3]
+---
+
+# Phase 4: Docs and live verification
+
+## Goal
+
+The docs describe updating and the notice, and a real release proves the in-place update end to end.
+
+## Files to Create / Modify
+
+- Modify: `/home/namnn/src/social-mcp/README.md` (`## Install`: "Run `social-mcp update` to upgrade"; CLI
+  table row; environment variables; MCP tools note about `notice`)
+- Modify: `/home/namnn/src/social-mcp/docs/architecture.md` (storage table: `update-check.json`,
+  `update-notice-cli`; daemon lifecycle: the daily check and its opt-out)
+
+## Tasks & Steps
+
+1. Update the docs above; keep `config.toml` keys pointed at the generated template rather than copied.
+2. Open a PR; merge when pr-gate is green (branch protection requires it); confirm ci on main is green,
+   including the Windows replace test.
+3. Live update (outward-facing; ask the user first, agree tags): publish two prereleases that contain the
+   command, for example `v0.1.0-rc.3` then `v0.1.0-rc.4`:
+   - install `rc.3` into a scratch folder with the one-liner (`SOCIAL_MCP_INSTALL_DIR`), start its daemon
+     with a scratch `SOCIAL_MCP_HOME` and `SOCIAL_MCP_KEYRING=off`;
+   - run `social-mcp update --version v0.1.0-rc.4`; check `version` prints `v0.1.0-rc.4`, `daemon status`
+     reports the daemon on `v0.1.0-rc.4`, and the scratch daemon is stopped afterwards;
+   - if a Windows machine is available, repeat with `install.ps1`.
+4. The stable-only notice path (daily check against `releases/latest`) is covered by unit tests with a local
+   server; the first real stable releases (`v0.1.0`, then a later one) will exercise it live. Record this as
+   the remaining unverified piece.
+
+## Verification
+
+- README commands and file names match the code.
+- Live run results recorded in the PR description or plan.
