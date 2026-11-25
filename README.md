@@ -34,7 +34,7 @@ user PATH). No sudo or admin rights are needed. Set `SOCIAL_MCP_VERSION` (for ex
 specific release, or `SOCIAL_MCP_INSTALL_DIR` to choose the folder. Running the command again upgrades in place.
 
 You can also download a binary from the [releases page](https://github.com/nhatnam1507/social-mcp/releases),
-or build from source with Go 1.26+:
+or build from source with Go 1.26.1 or newer:
 
 ```sh
 go install github.com/nhatnam1507/social-mcp/cmd/social-mcp@latest

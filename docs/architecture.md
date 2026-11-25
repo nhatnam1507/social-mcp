@@ -72,8 +72,9 @@ How it works:
 1. **Submit:** `upload_video` validates the file (absolute path, optional `allowed_dirs`, video container
    detection) and each account (health, privacy, format, size, options, metadata). It creates one job per
    accepted account, recording the file's size, modification time and fingerprint.
-2. **Run:** workers claim jobs atomically. TikTok and Instagram run one job per account at a time. Each
-   attempt re-checks that the file is unchanged and reads it through the opened handle.
+2. **Run:** `uploads.max_concurrent` workers (default 2, at most 16) claim jobs atomically. TikTok and
+   Instagram run one job per account at a time. Each attempt re-checks that the file is unchanged and reads it
+   through the opened handle.
 3. **Phases:**
    - `pending`: queued, nothing sent yet.
    - `transferring`: bytes are being sent; nothing is published yet, so a retry can start over.
@@ -88,12 +89,15 @@ How it works:
    - Facebook looks the video up.
    - Instagram reads the container status.
 4. **Outcomes:**
-   - **Network or server errors:** retried up to 3 times with backoff.
-   - **Rate limits:** retried after the delay the platform asks for, without using up an attempt.
+   - **Network or server errors:** up to 3 attempts in total, with increasing backoff between them.
+   - **Rate limits:** retried after the delay the platform asks for, without using up an attempt. A job that is
+     still rate limited 24 hours after its first rate limit fails.
    - **Permanent errors (quota, policy, validation):** fail immediately.
    - **Rejected token:** refreshed once when possible. Otherwise the owner (the account for Page tokens, the
      credential for the rest) is marked `needs_reauth`.
    - **Unknown result:** when a publish result cannot be determined, the job becomes `needs_review`.
+   - **After `committing`:** a job that would fail once it has reached `committing` becomes `needs_review`
+     instead, because the publish step may have taken effect; it is never reported as safe to upload again.
 5. **Cancel and shutdown:**
    - A user cancel stops a job only before `committing`.
    - Shutdown interrupts uploads without changing their status, so the next daemon start resumes them from
