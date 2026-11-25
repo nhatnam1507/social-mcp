@@ -35,5 +35,11 @@ login_config_id = ""
 graph_version = "v26.0"
 # "development" (posts visible only to app roles) or "live".
 app_mode = "development"
+
+# The daemon checks GitHub once a day for a new social-mcp release and mentions it once in the CLI and to
+# your agent. To turn the check off, uncomment these two lines (or set SOCIAL_MCP_NO_UPDATE_CHECK=1);
+# "social-mcp update" still works. Left commented out, this file also stays readable by older releases.
+# [updates]
+# check = false
 `
 }

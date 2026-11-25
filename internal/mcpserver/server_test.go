@@ -20,6 +20,17 @@ type fakeService struct {
 	service.Service
 	lastPlatform string
 	lastInput    service.UploadInput
+	notices      []string // returned by TakeUpdateNotice, one per call
+	noticeErr    error
+}
+
+func (f *fakeService) TakeUpdateNotice() (string, error) {
+	if f.noticeErr != nil || len(f.notices) == 0 {
+		return "", f.noticeErr
+	}
+	n := f.notices[0]
+	f.notices = f.notices[1:]
+	return n, nil
 }
 
 func (f *fakeService) ListAccounts(p string) ([]service.AccountView, error) {
@@ -247,5 +258,30 @@ func TestStatelessHTTP(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("no-token request status %d", resp.StatusCode)
+	}
+}
+
+func TestListAccountsCarriesUpdateNoticeOnce(t *testing.T) {
+	fake := &fakeService{notices: []string{"social-mcp v0.2.0 is available (you have v0.1.0). Run \"social-mcp update\" to install it."}}
+	cs := connect(t, fake)
+	notice := func(res *mcp.CallToolResult) string {
+		var out listAccountsOut
+		b, _ := json.Marshal(res.StructuredContent)
+		json.Unmarshal(b, &out)
+		return out.Notice
+	}
+	if n := notice(call(t, cs, "list_accounts", nil)); !strings.Contains(n, "v0.2.0") {
+		t.Fatalf("first list_accounts notice = %q", n)
+	}
+	if n := notice(call(t, cs, "list_accounts", nil)); n != "" {
+		t.Fatalf("second list_accounts notice = %q, want none", n)
+	}
+}
+
+func TestListAccountsIgnoresNoticeErrors(t *testing.T) {
+	cs := connect(t, &fakeService{noticeErr: errors.New("404 page not found")})
+	res := call(t, cs, "list_accounts", nil)
+	if res.IsError || !strings.Contains(text(res), "acc_1") || strings.Contains(text(res), "notice") {
+		t.Fatalf("list_accounts: %v %q", res.IsError, text(res))
 	}
 }

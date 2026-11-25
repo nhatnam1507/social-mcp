@@ -18,6 +18,7 @@ type Config struct {
 	YouTube YouTube `toml:"youtube"`
 	TikTok  TikTok  `toml:"tiktok"`
 	Meta    Meta    `toml:"meta"`
+	Updates Updates `toml:"updates"`
 }
 
 // Server configures the loopback listener used for MCP and OAuth callbacks.
@@ -30,6 +31,13 @@ type Uploads struct {
 	// AllowedDirs optionally restricts uploads to these directories. Empty means any path.
 	AllowedDirs   []string `toml:"allowed_dirs"`
 	MaxConcurrent int      `toml:"max_concurrent"`
+}
+
+// Updates configures the daily check for a new social-mcp release.
+type Updates struct {
+	// Check lets the daemon look up the latest release once a day so the CLI and the agent can say
+	// that an update is available. `social-mcp update` works either way.
+	Check bool `toml:"check"`
 }
 
 // YouTube holds the Google OAuth desktop client.
@@ -65,6 +73,7 @@ func Default() Config {
 		Server:  Server{ListenPort: 8765},
 		Uploads: Uploads{MaxConcurrent: 2},
 		Meta:    Meta{GraphVersion: "v26.0", AppMode: AppModeDevelopment},
+		Updates: Updates{Check: true},
 	}
 }
 

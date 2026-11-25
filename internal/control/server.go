@@ -64,6 +64,9 @@ func NewHandler(svc service.Service, shutdown func()) http.Handler {
 	mux.HandleFunc("POST /v1/uploads/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, func() (service.JobView, error) { return svc.CancelUpload(r.PathValue("id")) })
 	})
+	mux.HandleFunc("POST /v1/update-notice", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, svc.TakeUpdateNotice)
+	})
 	mux.HandleFunc("POST /v1/shutdown", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 		if shutdown != nil {

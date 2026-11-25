@@ -51,6 +51,9 @@ func NewRoot(version string, stdout, stderr io.Writer) *cobra.Command {
 		Short:         "Upload videos to YouTube, TikTok, Facebook Pages and Instagram from AI agents over MCP",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		PersistentPostRun: func(cmd *cobra.Command, _ []string) {
+			printUpdateNotice(cmd, version, stderr)
+		},
 	}
 	root.SetOut(stdout)
 	root.SetErr(stderr)

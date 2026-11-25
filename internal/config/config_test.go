@@ -16,7 +16,7 @@ func TestTemplateRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load(template): %v", err)
 	}
-	if cfg.Server.ListenPort != 8765 || cfg.Uploads.MaxConcurrent != 2 || cfg.Meta.GraphVersion != "v26.0" {
+	if cfg.Server.ListenPort != 8765 || cfg.Uploads.MaxConcurrent != 2 || cfg.Meta.GraphVersion != "v26.0" || !cfg.Updates.Check {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
 	if len(cfg.Uploads.AllowedDirs) != 0 {
@@ -34,6 +34,9 @@ func TestMissingFileYieldsDefaults(t *testing.T) {
 	}
 	if cfg.Server.ListenPort != 8765 {
 		t.Fatalf("listen_port = %d", cfg.Server.ListenPort)
+	}
+	if !cfg.Updates.Check {
+		t.Fatal("the update check must default to on")
 	}
 }
 
@@ -82,5 +85,24 @@ func TestUnknownKeysRejected(t *testing.T) {
 	os.WriteFile(path, []byte("[youtube]\nclient-id = \"x\"\n"), 0o600)
 	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "client-id") {
 		t.Fatalf("typo accepted: %v", err)
+	}
+}
+
+func TestTemplateHasNoUpdatesKeys(t *testing.T) {
+	// Older releases reject unknown settings; a config written by `config init` must stay loadable by
+	// them, so the opt-out is only shown commented out.
+	for _, line := range strings.Split(Template(), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "[updates]") {
+			t.Fatalf("template enables the [updates] section: %q", line)
+		}
+	}
+}
+
+func TestUpdatesOptOutLoads(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	os.WriteFile(path, []byte("[updates]\ncheck = false\n"), 0o600)
+	cfg, err := Load(path)
+	if err != nil || cfg.Updates.Check {
+		t.Fatalf("cfg.Updates.Check = %v, err = %v", cfg.Updates.Check, err)
 	}
 }

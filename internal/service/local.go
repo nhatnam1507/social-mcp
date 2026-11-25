@@ -43,6 +43,8 @@ type Options struct {
 	KeyBackend  string
 	StartedAt   time.Time
 	Now         func() time.Time
+	// UpdateNotice returns the agent's update notice once per release; nil when the update check is off.
+	UpdateNotice func() string
 }
 
 // Local implements Service inside the daemon.
@@ -400,6 +402,14 @@ func (l *Local) ListUploads(f UploadFilter) ([]JobView, error) {
 		out[i] = jobView(u)
 	}
 	return out, nil
+}
+
+// TakeUpdateNotice returns the one-time update notice for the agent, or "".
+func (l *Local) TakeUpdateNotice() (string, error) {
+	if l.o.UpdateNotice == nil {
+		return "", nil
+	}
+	return l.o.UpdateNotice(), nil
 }
 
 // CancelUpload cancels a queued job, or a running job that has not started publishing.

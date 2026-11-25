@@ -52,6 +52,9 @@ func (f *fakeService) ListUploads(fl service.UploadFilter) ([]service.JobView, e
 func (f *fakeService) CancelUpload(id string) (service.JobView, error) {
 	return service.JobView{ID: id, Status: "cancelled"}, nil
 }
+func (f *fakeService) TakeUpdateNotice() (string, error) {
+	return "social-mcp v9.9.9 is available", nil
+}
 
 func TestRoundTrip(t *testing.T) {
 	dir, err := os.MkdirTemp("", "sm")
@@ -101,6 +104,9 @@ func TestRoundTrip(t *testing.T) {
 	}
 	if j, err := c.CancelUpload("job_1"); err != nil || j.Status != "cancelled" {
 		t.Fatalf("cancel %+v %v", j, err)
+	}
+	if n, err := c.TakeUpdateNotice(); err != nil || n != "social-mcp v9.9.9 is available" {
+		t.Fatalf("update notice %q %v", n, err)
 	}
 	if err := c.Shutdown(); err != nil {
 		t.Fatal(err)
