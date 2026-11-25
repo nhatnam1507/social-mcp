@@ -16,13 +16,31 @@ on each platform; see [docs/platform-setup.md](docs/platform-setup.md).
 
 ## Install
 
-Download a binary for your OS from the CI build artifacts, or build from source with Go 1.26+:
+Linux and macOS:
+
+```sh
+curl -fsSL https://github.com/nhatnam1507/social-mcp/releases/latest/download/install.sh | sh
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://github.com/nhatnam1507/social-mcp/releases/latest/download/install.ps1 | iex
+```
+
+The script picks the binary for your OS and CPU from the latest release, checks it against the release's
+`SHA256SUMS`, and installs it to `~/.local/bin` (Windows: `%LOCALAPPDATA%\Programs\social-mcp`, added to your
+user PATH). No sudo or admin rights are needed. Set `SOCIAL_MCP_VERSION` (for example `v0.1.0`) to install a
+specific release, or `SOCIAL_MCP_INSTALL_DIR` to choose the folder. Running the command again upgrades in place.
+
+You can also download a binary from the [releases page](https://github.com/nhatnam1507/social-mcp/releases),
+or build from source with Go 1.26+:
 
 ```sh
 go install github.com/nhatnam1507/social-mcp/cmd/social-mcp@latest
 ```
 
-Supported: Linux, macOS and Windows 10 1803+ on amd64 and arm64. Build every target with `scripts/build-all.sh`.
+Supported: Linux, macOS and Windows 10 1803+ on amd64 and arm64.
 
 ## Quick start
 
@@ -126,3 +144,15 @@ go test ./...                       # unit and contract tests
 go test -tags e2e ./e2e/...         # builds the binary and drives it end to end
 bash scripts/build-all.sh           # six static binaries plus SHA256SUMS
 ```
+
+### Releasing
+
+Push a version tag; the `release` workflow runs the full test matrix, builds every target with the tag as its
+version, and publishes a GitHub Release with the binaries, `SHA256SUMS`, `install.sh` and `install.ps1`:
+
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+A tag with a suffix such as `v0.1.0-rc.1` is published as a prerelease. The default install command skips
+prereleases; install one with `SOCIAL_MCP_VERSION=v0.1.0-rc.1`.
