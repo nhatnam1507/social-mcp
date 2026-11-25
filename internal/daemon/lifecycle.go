@@ -13,6 +13,7 @@ import (
 	"github.com/nhatnam1507/social-mcp/internal/control"
 	"github.com/nhatnam1507/social-mcp/internal/paths"
 	"github.com/nhatnam1507/social-mcp/internal/service"
+	"github.com/nhatnam1507/social-mcp/internal/update"
 )
 
 // Start launches `<exe> daemon run --detached` in the background with output appended to
@@ -33,6 +34,7 @@ func Start(home string, timeout time.Duration) (service.StatusView, error) {
 	if err != nil {
 		return service.StatusView{}, err
 	}
+	update.CleanupOld(exe) // a binary moved aside by an earlier `social-mcp update` on Windows
 	logf, err := os.OpenFile(paths.Log(home), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return service.StatusView{}, err

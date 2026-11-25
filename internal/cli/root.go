@@ -54,7 +54,7 @@ func NewRoot(version string, stdout, stderr io.Writer) *cobra.Command {
 	}
 	root.SetOut(stdout)
 	root.SetErr(stderr)
-	root.AddCommand(daemonCmd(version), accountCmd(), configCmd(), mcpCmd(version), versionCmd(version))
+	root.AddCommand(daemonCmd(version), accountCmd(), configCmd(), mcpCmd(version), versionCmd(version), updateCmd(version))
 	return root
 }
 
