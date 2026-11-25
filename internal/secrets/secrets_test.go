@@ -122,8 +122,13 @@ func TestMismatchedKeyFailsCheck(t *testing.T) {
 	if _, err := LoadKey(home, kr, meta); err != nil {
 		t.Fatal(err)
 	}
-	for k := range kr.data {
-		kr.data[k] = "00" + kr.data[k][2:]
+	for k, v := range kr.data {
+		// Always change the first byte: writing a fixed value is a no-op when the key already starts with it.
+		first := "00"
+		if v[:2] == first {
+			first = "ff"
+		}
+		kr.data[k] = first + v[2:]
 	}
 	if _, err := LoadKey(home, kr, meta); err == nil {
 		t.Fatal("expected key check failure")
