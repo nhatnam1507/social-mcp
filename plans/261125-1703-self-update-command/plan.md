@@ -1,7 +1,7 @@
 ---
 title: "Self-update command and one-time new-version notice"
 description: "`social-mcp update` installs the latest release in place and restarts a running daemon, and when a new stable release appears the user is told once in the CLI and once through their agent."
-status: in-progress
+status: completed
 priority: P2
 effort: 7h
 branch: feat/self-update
@@ -72,7 +72,7 @@ social-mcp update ──download asset + SHA256SUMS──> verify ──> swap e
 | 1 | [Release lookup and in-place install](phase-01-update-core.md) | 2h | none | completed |
 | 2 | [`social-mcp update` command](phase-02-update-command.md) | 1.5h | 1 | completed |
 | 3 | [Daily check and one-time notices](phase-03-check-and-notices.md) | 2h | 1 | completed |
-| 4 | [Docs and live verification](phase-04-docs-and-verification.md) | 1.5h | 2, 3 | in-progress (docs and live checks done; PR and CI pending) |
+| 4 | [Docs and live verification](phase-04-docs-and-verification.md) | 1.5h | 2, 3 | completed |
 
 ## Acceptance criteria
 

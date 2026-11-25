@@ -1,7 +1,7 @@
 ---
 phase: 4
 title: "Docs, live verification and merge protection"
-status: in-progress
+status: completed
 priority: P1
 effort: "1.5h"
 dependencies: [1, 2, 3]
@@ -86,3 +86,22 @@ merge.
 - PR, main and tag runs behave as in steps 6 to 8 (record run URLs in the PR description).
 - `grep -rn build-all --exclude-dir=plans .` returns nothing.
 - `gh api repos/nhatnam1507/social-mcp/branches/main/protection` lists the `test` context (after approval).
+
+## Results (2026-11-25)
+
+- PR #6 merged (`7858ce6`). Its pr-gate run (45639832211) ran every step in 2m25s: `make test` with `-race`,
+  e2e, `make vet-cross`, `make lint` and `make release-check`. ci did not run on the PR.
+- First ci run on main (45640397920): Linux and Windows passed; `make` was already on the Windows runner, so
+  the Chocolatey fallback did not run. macOS failed in `TestCancelRefusedForRequeuedCommittingJob`, a timing
+  race in the test, and `build` was skipped, which shows the build gate works.
+- PR #7 fixed that test (`7e458df`); ci on main (45646773991) then passed on all three OSes and `build` uploaded
+  `social-mcp-binaries`.
+- PR #8 (docs only) proved the docs-only skip: pr-gate passed in 4 seconds with the test, lint and release
+  steps skipped (45652750019). Merged as `1535193`.
+- Branch protection on main: required check `test`, not strict, admins may bypass, no review requirement.
+- `v0.1.0-rc.2` (release run 45655927652): prerelease with the six binaries, `SHA256SUMS` and both installers;
+  release notes grouped by commit type; the curl one-liner with `SOCIAL_MCP_VERSION=v0.1.0-rc.2` installed it
+  and its checksum matched `SHA256SUMS`.
+- `v0.1.0` (release run 45666138663) is the first full release built by GoReleaser; `releases/latest` points to
+  it and the default one-liner installs it.
+- GitHub detects `LICENSE` as MIT (REST `repos/.../license`).
