@@ -1,0 +1,45 @@
+name: pr-gate
+
+# The check that must pass before a pull request merges. Tests run once on Linux; the Windows and macOS
+# code is compile-checked from the same runner. The full 3-OS test matrix runs in ci.yml on main.
+on:
+  pull_request:
+
+concurrency:
+  group: pr-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Branch protection requires this job by name ("test"). It always runs so the check always reports;
+  # a PR that only changes docs or plans skips the steps and passes.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # the PR merge commit and its base parent
+      - name: detect docs-only changes
+        id: changes
+        run: |
+          if git diff --name-only HEAD^1 HEAD | grep -qvE '(\.md$|^docs/|^plans/)'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "Only docs or plans changed; tests skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - if: steps.changes.outputs.code == 'true'
+        uses: ./.github/actions/test
+      - name: compile-check Windows and macOS
+        if: steps.changes.outputs.code == 'true'
+        run: make vet-cross
+      - name: lint the installer script
+        if: steps.changes.outputs.code == 'true'
+        run: make lint
+      - if: steps.changes.outputs.code == 'true'
+        uses: ./.github/actions/setup-goreleaser
+      - name: validate the release config
+        if: steps.changes.outputs.code == 'true'
+        run: make release-check GORELEASER=goreleaser

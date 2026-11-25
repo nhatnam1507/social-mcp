@@ -1,9 +1,10 @@
 name: ci
 
+# Runs on main: the full test matrix, then a snapshot build of every release target only when all tests
+# pass. Pull requests are covered by pr-gate.yml.
 on:
   push:
     branches: [main]
-  pull_request:
   workflow_call: # release.yml runs these jobs before publishing
 
 permissions:
@@ -19,32 +20,26 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - run: go vet ./...
-      - name: unit tests (race detector)
-        if: runner.os != 'Windows'
-        run: go test -race -count=1 ./...
-      - name: unit tests
-        if: runner.os == 'Windows'
-        run: go test -count=1 ./...
-      - name: end-to-end test
-        run: go test -tags e2e -count=1 -v ./e2e/...
+      - uses: ./.github/actions/test
 
   build:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # GoReleaser derives the version from tags
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
       - name: lint the installer script
-        run: shellcheck scripts/install.sh
-      - run: bash scripts/build-all.sh
+        run: make lint
+      - uses: ./.github/actions/setup-goreleaser
+      - name: build every release target
+        run: make dist GORELEASER=goreleaser
       - uses: actions/upload-artifact@v4
         with:
           name: social-mcp-binaries
-          path: dist/
+          path: |
+            dist/bin/
+            dist/SHA256SUMS

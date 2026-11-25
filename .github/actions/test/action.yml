@@ -1,0 +1,16 @@
+name: test
+description: Set up Go and run vet, unit tests and the end-to-end test through make. Check out the repository first.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+    - name: ensure make is available
+      if: runner.os == 'Windows'
+      shell: bash
+      run: command -v make >/dev/null || choco install make -y --no-progress
+    - name: make test
+      shell: bash
+      run: make test
