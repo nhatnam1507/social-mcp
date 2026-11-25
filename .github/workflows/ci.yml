@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call: # release.yml runs these jobs before publishing
 
 permissions:
   contents: read
@@ -40,6 +41,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: lint the installer script
+        run: shellcheck scripts/install.sh
       - run: bash scripts/build-all.sh
       - uses: actions/upload-artifact@v4
         with:
