@@ -1,0 +1,65 @@
+# Builds and publishes social-mcp releases. Run through make: `make release-check`, `make dist` (snapshot,
+# never publishes). Only .github/workflows/release.yml publishes, on a v* tag.
+#
+# scripts/install.sh and scripts/install.ps1 depend on this output, so keep it stable:
+#   - raw binaries named social-mcp-<os>-<arch>, plus .exe on Windows (no archives); locally in dist/bin/
+#   - SHA256SUMS with "<sha256>  <asset>" lines
+#   - install.sh and install.ps1 attached to every release
+version: 2
+project_name: social-mcp
+
+builds:
+  - id: social-mcp
+    main: ./cmd/social-mcp
+    # Unique per target, so every binary lands flat in dist/bin/ under its release name. (Building straight
+    # into dist/ would give the binary and its upload the same name, which GoReleaser warns about.)
+    binary: "bin/{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+    no_unique_dist_dir: true
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    # Releases print the tag including its leading "v"; snapshots print the snapshot version.
+    ldflags:
+      - -s -w -X main.version={{ if .IsSnapshot }}{{ .Version }}{{ else }}{{ .Tag }}{{ end }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: raw-binaries
+    formats: [binary]
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: SHA256SUMS
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next+{{ .ShortCommit }}"
+
+changelog:
+  use: git
+  sort: asc
+  abbrev: 7
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Other
+      order: 999
+  filters:
+    exclude:
+      - '^(docs|test|chore|ci|build)(\(.+\))??!?:'
+      - '^Merge (pull request|branch)'
+
+release:
+  # A tag with a suffix (v1.2.3-rc.1) becomes a prerelease, which releases/latest and the default
+  # install command ignore.
+  prerelease: auto
+  extra_files:
+    - glob: scripts/install.sh
+    - glob: scripts/install.ps1

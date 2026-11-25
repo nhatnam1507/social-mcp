@@ -1,0 +1,16 @@
+name: setup-goreleaser
+description: >-
+  Install the prebuilt GoReleaser binary at the version pinned in the Makefile, so CI and local make runs use
+  the same version. Run after checkout. Callers pass GORELEASER=goreleaser to make.
+
+runs:
+  using: composite
+  steps:
+    - id: pin
+      shell: bash
+      run: echo "version=$(make -s goreleaser-version)" >> "$GITHUB_OUTPUT"
+    - uses: goreleaser/goreleaser-action@v7
+      with:
+        distribution: goreleaser
+        version: ${{ steps.pin.outputs.version }}
+        install-only: true
