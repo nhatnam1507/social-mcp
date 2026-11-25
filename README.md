@@ -31,7 +31,11 @@ irm https://github.com/nhatnam1507/social-mcp/releases/latest/download/install.p
 The script picks the binary for your OS and CPU from the latest release, checks it against the release's
 `SHA256SUMS`, and installs it to `~/.local/bin` (Windows: `%LOCALAPPDATA%\Programs\social-mcp`, added to your
 user PATH). No sudo or admin rights are needed. Set `SOCIAL_MCP_VERSION` (for example `v0.1.0`) to install a
-specific release, or `SOCIAL_MCP_INSTALL_DIR` to choose the folder. Running the command again upgrades in place.
+specific release, or `SOCIAL_MCP_INSTALL_DIR` to choose the folder.
+
+To upgrade later, run `social-mcp update` (running the install command again also works). It installs the
+latest release over the current binary, verified against `SHA256SUMS`, and restarts the daemon if it was
+running. When a new release comes out, social-mcp tells you once in the terminal and once through your agent.
 
 You can also download a binary from the [releases page](https://github.com/nhatnam1507/social-mcp/releases),
 or build from source with Go 1.26.1 or newer:
@@ -74,10 +78,12 @@ The agent calls `list_accounts`, then `upload_video`, which returns the queued j
 | `config mcp [--rotate]` | Show the MCP endpoint and token, or generate a new token (then restart the daemon) |
 | `mcp` | Serve MCP over stdio, backed by the running daemon |
 | `version` | Print the version |
+| `update [--version TAG]` | Install the latest release (or `TAG`) in place and restart a running daemon |
 
 Environment variables: `SOCIAL_MCP_HOME` overrides the home directory (default: your user config directory
 plus `social-mcp`). `SOCIAL_MCP_KEYRING=off` makes a new home keep its encryption key in a file instead of the
-OS keyring (useful on headless machines).
+OS keyring (useful on headless machines). `SOCIAL_MCP_NO_UPDATE_CHECK=1` turns off the daily update check, as
+does `check = false` under `[updates]` in `config.toml`; `social-mcp update` still works.
 
 ## MCP tools
 
@@ -88,6 +94,9 @@ OS keyring (useful on headless machines).
 | `get_upload_status` | Status, progress, outcome and URL of a job |
 | `list_uploads` | Recent jobs, filterable by status and account |
 | `cancel_upload` | Cancel a job that has not started publishing |
+
+`list_accounts` also returns a one-time `notice` when a new social-mcp release is available, so the agent can
+pass it on.
 
 Uploads run in the background and survive daemon restarts. Job status is one of `queued`, `uploading`,
 `succeeded`, `failed`, `cancelled` or `needs_review`. `needs_review` means the platform may or may not have
