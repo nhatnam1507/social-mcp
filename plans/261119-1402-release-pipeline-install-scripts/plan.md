@@ -58,15 +58,16 @@ git push origin v0.1.0
 - `SOCIAL_MCP_VERSION` pins a release tag in both installers; default is the latest release.
 - Integrity: both installers verify the asset against `SHA256SUMS` and abort on mismatch or when no hash
   tool is available. No build-provenance attestations.
-- No GoReleaser, archives, Homebrew or Scoop in this plan.
+- No GoReleaser, archives, Homebrew or Scoop in this plan. (Superseded 2026-11-25: GoReleaser now builds
+  and publishes releases with the same asset names; see `261125-1413-pr-gate-make-targets`.)
 
 ## Phases
 
 | # | Phase | Effort | Depends on | Status |
 |---|-------|--------|------------|--------|
 | 1 | [Installer scripts](phase-01-installer-scripts.md) | 2h | none | completed |
-| 2 | [Release workflow](phase-02-release-workflow.md) | 1h | 1 | in-progress (live run pending) |
-| 3 | [Docs and release-candidate verification](phase-03-docs-and-rc-verification.md) | 1h | 1, 2 | in-progress (docs done; rc pending) |
+| 2 | [Release workflow](phase-02-release-workflow.md) | 1h | 1 | completed |
+| 3 | [Docs and release-candidate verification](phase-03-docs-and-rc-verification.md) | 1h | 1, 2 | in-progress (macOS unverified; v0.1.0 not cut) |
 
 ## Acceptance criteria
 
