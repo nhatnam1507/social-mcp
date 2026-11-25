@@ -200,11 +200,12 @@ version and publishes a GitHub Release with the binaries, `SHA256SUMS`, `install
 notes grouped from conventional commits (`feat:`, `fix:`):
 
 ```sh
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.2.0 && git push origin v0.2.0
 ```
 
-A tag with a suffix such as `v0.1.0-rc.1` is published as a prerelease. The default install command skips
-prereleases; install one with `SOCIAL_MCP_VERSION=v0.1.0-rc.1`.
+A tag with a suffix such as `v0.2.0-rc.1` is published as a prerelease. The default install command and
+`social-mcp update` skip prereleases; install one with `SOCIAL_MCP_VERSION=v0.2.0-rc.1` or
+`social-mcp update --version v0.2.0-rc.1`.
 
 ## License
 
