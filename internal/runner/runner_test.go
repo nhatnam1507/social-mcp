@@ -395,10 +395,21 @@ func TestCancelRefusedForRequeuedCommittingJob(t *testing.T) {
 	_, acc := h.env.AddAccount(enginetest.AccountSpec{Platform: "youtube", ExternalID: "ch1", Refreshable: true})
 	h.start(t)
 	id := h.submit(t, acc.ID)[0]
-	u := waitStatus(t, h.env.Store, id, store.StatusQueued)
-	for u.Phase != store.PhaseCommitting {
+	// Wait until the job is requeued after reaching the committing phase. The phase is written while the job
+	// is still uploading, so waiting for the phase alone can cancel the running job instead of the requeued one.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		u, err := h.env.Store.GetUpload(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if u.Status == store.StatusQueued && u.Phase == store.PhaseCommitting {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("job never requeued in the committing phase: status %s, phase %s", u.Status, u.Phase)
+		}
 		time.Sleep(5 * time.Millisecond)
-		u, _ = h.env.Store.GetUpload(id)
 	}
 	if _, err := h.svc.CancelUpload(id); !service.IsValidation(err) {
 		t.Fatalf("cancel of requeued committing job: %v", err)
