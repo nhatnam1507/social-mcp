@@ -139,16 +139,56 @@ These were verified against platform documentation on 2026-11-02:
 
 ## Development
 
+Everything runs through `make`. You need Go (version from `go.mod`), GNU make and a POSIX shell (Git Bash or
+WSL on Windows); `make lint` also needs `shellcheck`. Run `make` to list the targets:
+
+| Target | What it does |
+|---|---|
+| `make test` | `go vet`, unit tests and the end-to-end test; this is what CI runs |
+| `make test-unit` / `make test-e2e` | Only the unit tests (with the race detector when a C compiler is available) / only the end-to-end test |
+| `make vet-cross` | Compile-check the Windows and macOS code from any machine |
+| `make lint` | `shellcheck` the installer script |
+| `make build` | Build `./social-mcp` for this machine |
+| `make run` | Run the daemon in the foreground against a separate dev home (see below) |
+| `make dist` | Build every release target into `dist/` (binaries in `dist/bin/`, plus `SHA256SUMS`) without publishing |
+| `make release-check` | Validate `.goreleaser.yaml` |
+| `make clean` | Remove `dist/` and `./social-mcp` |
+
+`make dist` and `make release-check` run [GoReleaser](https://goreleaser.com) at the version pinned in the
+`Makefile` through `go run`, so there is nothing to install; the first run compiles it (and downloads the newer
+Go toolchain GoReleaser needs), later runs are fast.
+
+### Running locally
+
+`make run` builds the binary and runs `social-mcp daemon run` with `SOCIAL_MCP_HOME=./.dev` and
+`SOCIAL_MCP_KEYRING=off`, so development never touches your real config, accounts or OS keyring. The first run
+writes `./.dev/config.toml`; add your development app credentials there (see
+[Platform setup](docs/platform-setup.md)). Run any other command against the same dev home with `ARGS`:
+
 ```sh
-go test ./...                       # unit and contract tests
-go test -tags e2e ./e2e/...         # builds the binary and drives it end to end
-bash scripts/build-all.sh           # six static binaries plus SHA256SUMS
+make run                              # daemon in the foreground; Ctrl+C stops it
+make run ARGS="account add youtube"   # connect a test account to the dev home
+make run ARGS="config mcp"            # MCP endpoint and token of the dev daemon
 ```
+
+The dev home listens on port 8765 like a normal install. Stop your real daemon first, or change `listen_port`
+in `./.dev/config.toml` and register that port's OAuth redirect URIs for your development apps.
+
+### CI
+
+- **pr-gate** runs on every pull request and must pass before merging: `make test` on Linux, `make vet-cross`,
+  `make lint` and `make release-check`. A pull request that only changes Markdown, `docs/` or `plans/` skips
+  these and passes.
+- **ci** runs on every push to `main`: `make test` on Linux, macOS and Windows, then `make dist` only when all
+  of them pass.
+
+Both run the tests through the shared action in `.github/actions/test`.
 
 ### Releasing
 
-Push a version tag; the `release` workflow runs the full test matrix, builds every target with the tag as its
-version, and publishes a GitHub Release with the binaries, `SHA256SUMS`, `install.sh` and `install.ps1`:
+Push a version tag; the `release` workflow runs ci, then GoReleaser builds every target with the tag as its
+version and publishes a GitHub Release with the binaries, `SHA256SUMS`, `install.sh`, `install.ps1` and release
+notes grouped from conventional commits (`feat:`, `fix:`):
 
 ```sh
 git tag v0.1.0 && git push origin v0.1.0
@@ -156,3 +196,7 @@ git tag v0.1.0 && git push origin v0.1.0
 
 A tag with a suffix such as `v0.1.0-rc.1` is published as a prerelease. The default install command skips
 prereleases; install one with `SOCIAL_MCP_VERSION=v0.1.0-rc.1`.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
