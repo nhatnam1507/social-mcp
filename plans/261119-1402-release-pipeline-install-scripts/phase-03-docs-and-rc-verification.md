@@ -36,8 +36,8 @@ Document the new install path and release procedure, then prove the whole chain 
 - [ ] macOS: unverified (no Mac available in the session).
 - [x] Cut `v0.1.0`: released 2026-11-25 (built by GoReleaser since `261125-1413-pr-gate-make-targets`); the
       default one-liner installs it.
-- [ ] Keep or delete the `v0.1.0-rc.1` and `v0.1.0-rc.2` prereleases (`gh release delete <tag> --cleanup-tag`);
-      kept until the user decides.
+- [x] Deleted the `v0.1.0-rc.1` and `v0.1.0-rc.2` prereleases and their tags after `v0.1.0` was released
+      (user decision, 2026-11-25).
 
 ## Risk / Rollback
 
