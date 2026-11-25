@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Release workflow"
-status: in-progress
+status: completed
 priority: P2
 effort: "1h"
 dependencies: [1]
@@ -28,7 +28,7 @@ GitHub Release carrying the binaries, `SHA256SUMS` and both installers.
       `VERSION` = tag, copies both installers into `dist/`, and runs `gh release create` with
       `--verify-tag --generate-notes`, plus `--prerelease` for tags containing `-`.
 - [x] Tag passed through `env:`, never interpolated inside `run:`.
-- [ ] First live run (phase 3 release candidate).
+- [x] First live run: tag `v0.1.0-rc.1`, run 45626533378, all CI jobs and the release job succeeded.
 
 ## Validation (2026-11-25)
 

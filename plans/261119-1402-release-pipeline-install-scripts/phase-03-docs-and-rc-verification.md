@@ -28,14 +28,26 @@ Document the new install path and release procedure, then prove the whole chain 
 
 ### Release-candidate verification (outward-facing: needs the user's go-ahead)
 
-- [ ] Merge phases 1–2 to `main`, push `v0.1.0-rc.1`. Confirm the Release is a prerelease with 10 assets
+- [x] Merged as PR #5 (`02df017`), pushed `v0.1.0-rc.1`. Confirm the Release is a prerelease with 10 assets
       (6 binaries, `SHA256SUMS`, 2 installers).
-- [ ] Linux (WSL): `curl -fsSL …/releases/download/v0.1.0-rc.1/install.sh | SOCIAL_MCP_VERSION=v0.1.0-rc.1 sh`;
+- [x] Linux (WSL): `curl -fsSL …/releases/download/v0.1.0-rc.1/install.sh | SOCIAL_MCP_VERSION=v0.1.0-rc.1 sh`;
       `social-mcp version` prints `v0.1.0-rc.1`.
-- [ ] Windows: `$env:SOCIAL_MCP_VERSION='v0.1.0-rc.1'; irm …/releases/download/v0.1.0-rc.1/install.ps1 | iex`.
-- [ ] macOS: run by the user, or recorded as unverified.
+- [x] Windows (PowerShell 5.1 and 7.6, from the real release): `$env:SOCIAL_MCP_VERSION='v0.1.0-rc.1'; irm …/releases/download/v0.1.0-rc.1/install.ps1 | iex`.
+- [ ] macOS: unverified (no Mac available in the session).
 - [ ] Keep or delete the rc (`gh release delete v0.1.0-rc.1 --cleanup-tag`); cut `v0.1.0` when ready.
 
 ## Risk / Rollback
 
 Revert the README hunks. A bad prerelease does not affect `latest` installs and can be deleted.
+
+## Results (2026-11-25)
+
+- Release `v0.1.0-rc.1` is a prerelease with 10 assets: 6 binaries, `SHA256SUMS`, `install.sh`, `install.ps1`.
+- Linux: the `curl | sh` one-liner installed `social-mcp-linux-amd64`; `social-mcp version` printed `v0.1.0-rc.1`.
+- Windows: the `irm | iex` one-liner installed under both PowerShell versions; `social-mcp version` resolved
+  through PATH and printed `v0.1.0-rc.1`; the second run took the upgrade path. User PATH restored afterwards.
+- `releases/latest/download/...` returns 404 until a non-prerelease release exists, so the default install
+  command starts working with the first full release (`v0.1.0`).
+- The first PR CI run failed on Windows in `TestMismatchedKeyFailsCheck` (`internal/secrets`), unrelated to
+  this change: the test overwrites the first hex byte of a random key with `00`, which is a no-op about 1 run
+  in 256. A re-run passed.

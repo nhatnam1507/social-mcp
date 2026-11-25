@@ -65,8 +65,8 @@ git push origin v0.1.0
 | # | Phase | Effort | Depends on | Status |
 |---|-------|--------|------------|--------|
 | 1 | [Installer scripts](phase-01-installer-scripts.md) | 2h | none | completed |
-| 2 | [Release workflow](phase-02-release-workflow.md) | 1h | 1 | in-progress (live run pending) |
-| 3 | [Docs and release-candidate verification](phase-03-docs-and-rc-verification.md) | 1h | 1, 2 | in-progress (docs done; rc pending) |
+| 2 | [Release workflow](phase-02-release-workflow.md) | 1h | 1 | completed |
+| 3 | [Docs and release-candidate verification](phase-03-docs-and-rc-verification.md) | 1h | 1, 2 | in-progress (macOS unverified; v0.1.0 not cut) |
 
 ## Acceptance criteria
 
