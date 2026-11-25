@@ -1,7 +1,7 @@
 ---
 title: "PR gate, test-gated CI build, Makefile and GoReleaser"
 description: "Pull requests run the tests on Linux through a shared composite action, main runs them on three OSes and builds with GoReleaser only after they pass, and every build, test, release-check and local-run command goes through make."
-status: in-progress
+status: completed
 priority: P1
 effort: 4.5h
 branch: feat/pr-gate-make
@@ -79,8 +79,8 @@ tag v* ────────> release.yml ─ uses ci.yml ─> release (needs
 |---|-------|--------|------------|--------|
 | 1 | [Makefile and local dev run](phase-01-makefile.md) | 1h | none | completed |
 | 2 | [GoReleaser build and release config](phase-02-goreleaser.md) | 1h | 1 | completed |
-| 3 | [Composite test action and workflows](phase-03-workflows.md) | 1h | 1, 2 | completed (live runs pending) |
-| 4 | [Docs, live verification and merge protection](phase-04-docs-and-verification.md) | 1.5h | 1, 2, 3 | in-progress (docs and LICENSE done; push, PR, rc tag, protection pending) |
+| 3 | [Composite test action and workflows](phase-03-workflows.md) | 1h | 1, 2 | completed |
+| 4 | [Docs, live verification and merge protection](phase-04-docs-and-verification.md) | 1.5h | 1, 2, 3 | completed |
 
 ## Acceptance criteria
 

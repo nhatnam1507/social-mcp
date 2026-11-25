@@ -28,13 +28,16 @@ Document the new install path and release procedure, then prove the whole chain 
 
 ### Release-candidate verification (outward-facing: needs the user's go-ahead)
 
-- [x] Merged as PR #5 (`02df017`), pushed `v0.1.0-rc.1`. Confirm the Release is a prerelease with 10 assets
+- [x] Merged as PR #5 (`02df017`), pushed `v0.1.0-rc.1`. Confirm the Release is a prerelease with 9 assets
       (6 binaries, `SHA256SUMS`, 2 installers).
 - [x] Linux (WSL): `curl -fsSL …/releases/download/v0.1.0-rc.1/install.sh | SOCIAL_MCP_VERSION=v0.1.0-rc.1 sh`;
       `social-mcp version` prints `v0.1.0-rc.1`.
 - [x] Windows (PowerShell 5.1 and 7.6, from the real release): `$env:SOCIAL_MCP_VERSION='v0.1.0-rc.1'; irm …/releases/download/v0.1.0-rc.1/install.ps1 | iex`.
 - [ ] macOS: unverified (no Mac available in the session).
-- [ ] Keep or delete the rc (`gh release delete v0.1.0-rc.1 --cleanup-tag`); cut `v0.1.0` when ready.
+- [x] Cut `v0.1.0`: released 2026-11-25 (built by GoReleaser since `261125-1413-pr-gate-make-targets`); the
+      default one-liner installs it.
+- [ ] Keep or delete the `v0.1.0-rc.1` and `v0.1.0-rc.2` prereleases (`gh release delete <tag> --cleanup-tag`);
+      kept until the user decides.
 
 ## Risk / Rollback
 
@@ -42,7 +45,7 @@ Revert the README hunks. A bad prerelease does not affect `latest` installs and 
 
 ## Results (2026-11-25)
 
-- Release `v0.1.0-rc.1` is a prerelease with 10 assets: 6 binaries, `SHA256SUMS`, `install.sh`, `install.ps1`.
+- Release `v0.1.0-rc.1` is a prerelease with 9 assets: 6 binaries, `SHA256SUMS`, `install.sh`, `install.ps1`.
 - Linux: the `curl | sh` one-liner installed `social-mcp-linux-amd64`; `social-mcp version` printed `v0.1.0-rc.1`.
 - Windows: the `irm | iex` one-liner installed under both PowerShell versions; `social-mcp version` resolved
   through PATH and printed `v0.1.0-rc.1`; the second run took the upgrade path. User PATH restored afterwards.
