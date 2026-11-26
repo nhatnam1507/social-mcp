@@ -1,6 +1,19 @@
+---
+title: "Drop the old mcp commands and sync the docs with the code"
+description: "Remove the `mcp` and `config mcp` aliases so `connect` and `relay` are the only names, and make the README and architecture doc match the code."
+status: completed
+priority: P2
+effort: 1h
+branch: chore/drop-mcp-alias-sync-docs
+tags: [refactor, cli, docs]
+blockedBy: [261126-1600-register-mcp-once]
+blocks: []
+created: 2026-11-26
+---
+
 # Drop the old `mcp` commands and sync the docs with the code
 
-Status: done · Branch: `chore/drop-mcp-alias-sync-docs` · Follows PR #14
+Shipped in PR #15 (merge `75f6c90`). Follows PR #14.
 
 ## Outcome
 
