@@ -17,13 +17,7 @@ import (
 )
 
 func configCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "config",
-		Short: "Create and inspect configuration",
-		// Reject unknown subcommands, such as `config mcp` from older releases, instead of printing help.
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
-	}
+	cmd := groupCmd("config", "Create and inspect configuration")
 	cmd.AddCommand(configInitCmd(), configPathCmd())
 	return cmd
 }
