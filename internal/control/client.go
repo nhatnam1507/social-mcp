@@ -24,6 +24,8 @@ var ErrDaemonNotRunning = errors.New("daemon is not running (start it with `soci
 type Client struct {
 	socket string
 	http   *http.Client
+	// start, when set, is called once when nothing answers on the socket; the request is then retried.
+	start func() error
 }
 
 var _ service.Service = (*Client)(nil)
@@ -40,6 +42,13 @@ func NewClient(socket string) *Client {
 		},
 	}
 	return &Client{socket: socket, http: &http.Client{Transport: tr, Timeout: 60 * time.Second}}
+}
+
+// AutoStart makes the client call start when the daemon is not running and then retry the request
+// once. A failed dial means the request never reached the daemon, so the retry cannot repeat it.
+func (c *Client) AutoStart(start func() error) *Client {
+	c.start = start
+	return c
 }
 
 // StatusWithin is Status with a short deadline, for probing whether the daemon answers.
@@ -121,27 +130,22 @@ func (c *Client) do(method, path string, body, out any) error {
 }
 
 func (c *Client) doCtx(ctx context.Context, method, path string, body, out any) error {
-	var rd io.Reader
+	var payload []byte
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
 			return err
 		}
-		rd = bytes.NewReader(b)
+		payload = b
 	}
-	req, err := http.NewRequestWithContext(ctx, method, "http://social-mcp"+path, rd)
-	if err != nil {
-		return err
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		var opErr *net.OpError
-		if errors.As(err, &opErr) && opErr.Op == "dial" {
-			return ErrDaemonNotRunning
+	resp, err := c.send(ctx, method, path, payload)
+	if errors.Is(err, ErrDaemonNotRunning) && c.start != nil {
+		if serr := c.start(); serr != nil {
+			return serr
 		}
+		resp, err = c.send(ctx, method, path, payload)
+	}
+	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
@@ -166,4 +170,27 @@ func (c *Client) doCtx(ctx context.Context, method, path string, body, out any) 
 		return nil
 	}
 	return json.Unmarshal(data, out)
+}
+
+func (c *Client) send(ctx context.Context, method, path string, payload []byte) (*http.Response, error) {
+	var rd io.Reader
+	if payload != nil {
+		rd = bytes.NewReader(payload)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, "http://social-mcp"+path, rd)
+	if err != nil {
+		return nil, err
+	}
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		var opErr *net.OpError
+		if errors.As(err, &opErr) && opErr.Op == "dial" {
+			return nil, ErrDaemonNotRunning
+		}
+		return nil, err
+	}
+	return resp, nil
 }

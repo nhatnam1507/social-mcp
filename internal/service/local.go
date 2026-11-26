@@ -17,6 +17,7 @@ import (
 	"github.com/nhatnam1507/social-mcp/internal/store"
 	"github.com/nhatnam1507/social-mcp/internal/tokens"
 	"github.com/nhatnam1507/social-mcp/internal/videofile"
+	"github.com/nhatnam1507/social-mcp/internal/wsl"
 )
 
 var (
@@ -286,7 +287,8 @@ func (l *Local) SubmitUpload(in UploadInput) (UploadSubmission, error) {
 	if len(in.AccountIDs) == 0 {
 		return UploadSubmission{}, Invalid("account_ids must list at least one account (see list_accounts)")
 	}
-	info, err := videofile.Check(in.FilePath, l.o.AllowedDirs)
+	// An agent on Windows names files the Windows way; a daemon in WSL reads them under /mnt.
+	info, err := videofile.Check(wsl.LinuxPath(in.FilePath), l.o.AllowedDirs)
 	if err != nil {
 		return UploadSubmission{}, Invalid("%v", err)
 	}

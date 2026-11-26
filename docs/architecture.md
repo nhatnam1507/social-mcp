@@ -5,7 +5,7 @@
 ```mermaid
 flowchart TD
   CLI["CLI (cobra)"] -->|JSON over AF_UNIX control socket| CTRL[control API]
-  STDIO["social-mcp mcp (stdio)"] -->|control client| CTRL
+  STDIO["social-mcp relay (stdio)"] -->|control client| CTRL
   AGENT[MCP client] -->|"Streamable HTTP, loopback + bearer"| MCPH[MCP handler]
   BROWSER[browser] -->|OAuth redirect| CB["/oauth/callback"]
   subgraph daemon
@@ -28,6 +28,16 @@ Each package does one job:
 
 - **`internal/service`:** one `Service` interface backs the control API, the MCP tools in the daemon, and
   stdio MCP mode (through `control.Client`), so the tools are written once.
+- **The relay (`social-mcp relay`, hidden from help; `mcp` is its alias from v0.2.0 and earlier):** the relay that every `connect` entry starts. Its `control.Client` uses
+  `AutoStart`: when nothing answers on the socket it starts the daemon (`daemon.Start`) and retries the
+  request once. A failed dial means the request never reached the daemon, so the retry cannot submit an
+  upload twice. This is what lets an agent be registered once regardless of whether the daemon is running.
+- **`internal/cli/connect.go`, `settings.go` and `internal/wsl`:** `connect` holds one entry per supported
+  app (where its settings live, how to write them, and what the user does next). JSON settings (Claude
+  Desktop, Cursor, Antigravity) are edited key-order-preserving and Codex's TOML by replacing only the
+  `[mcp_servers.social-mcp]` table, each after a timestamped backup; Claude Code goes through `claude mcp add`.
+  Inside WSL the desktop apps' settings are found in the Windows profile and their entry runs
+  `wsl.exe -d <distro> -- <exe> relay`, and `SubmitUpload` converts Windows paths with `wslpath`.
 - **`internal/appauth`:** the OAuth app identity per platform (embedded in release builds, or `SOCIAL_MCP_*`
   overrides) and the only code that uses app secrets: `TokenEndpoint` performs code exchanges, refreshes and
   Meta's long-lived swap, so a hosted broker could replace it without changing the providers.

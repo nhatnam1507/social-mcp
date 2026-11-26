@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -11,6 +13,7 @@ import (
 	"github.com/nhatnam1507/social-mcp/internal/daemon"
 	"github.com/nhatnam1507/social-mcp/internal/mcptoken"
 	"github.com/nhatnam1507/social-mcp/internal/paths"
+	"github.com/nhatnam1507/social-mcp/internal/wsl"
 )
 
 func configCmd() *cobra.Command {
@@ -66,52 +69,80 @@ func configPathCmd() *cobra.Command {
 	}
 }
 
+// configMCPCmd is the older name of `social-mcp connect` without an app, kept hidden so existing
+// scripts and instructions keep working.
 func configMCPCmd() *cobra.Command {
 	var rotate bool
 	cmd := &cobra.Command{
-		Use:   "mcp",
-		Short: "Print the MCP endpoint, bearer token and client setup snippets",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			h, err := home()
-			if err != nil {
-				return err
-			}
-			if _, err := paths.Ensure(h); err != nil {
-				return err
-			}
-			cfg, err := config.Load(paths.Config(h))
-			if err != nil {
-				return err
-			}
-			var tok string
-			if rotate {
-				tok, err = mcptoken.Rotate(paths.MCPToken(h))
-			} else {
-				tok, err = mcptoken.LoadOrCreate(paths.MCPToken(h))
-			}
-			if err != nil {
-				return err
-			}
-			exe, _ := os.Executable()
-			port, err := config.ListenPort(os.Getenv)
-			if err != nil {
-				return err
-			}
-			if w := cfg.RetiredWarning(); w != "" {
-				fmt.Fprintln(cmd.ErrOrStderr(), "warning: "+w)
-			}
-			url := fmt.Sprintf("http://127.0.0.1:%d/mcp", port)
-			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "MCP endpoint: %s\nBearer token: %s\n\n", url, tok)
-			fmt.Fprintf(out, "Claude Code (HTTP):\n  claude mcp add --transport http social-mcp %s --header \"Authorization: Bearer %s\"\n\n", url, tok)
-			fmt.Fprintf(out, "Clients that launch stdio servers (JSON config):\n  {\"mcpServers\": {\"social-mcp\": {\"command\": %q, \"args\": [\"mcp\"]}}}\n", exe)
-			if rotate && daemon.Running(h) {
-				fmt.Fprintln(out, "\nThe running daemon still uses the old token: restart it with `social-mcp daemon stop && social-mcp daemon start`.")
-			}
-			return nil
-		},
+		Use:    "mcp",
+		Short:  "Same as `social-mcp connect` without an app",
+		Hidden: true,
+		Args:   cobra.NoArgs,
+		RunE:   func(cmd *cobra.Command, _ []string) error { return showSetup(cmd, rotate) },
 	}
-	cmd.Flags().BoolVar(&rotate, "rotate", false, "generate a new token (restart the daemon afterwards)")
+	cmd.Flags().BoolVar(&rotate, "rotate", false, "generate a new HTTP token (restart the daemon afterwards)")
 	return cmd
+}
+
+// showSetup prints how to connect any AI app, including the HTTP endpoint and its token, which it
+// creates (or, with rotate, replaces) on first use.
+func showSetup(cmd *cobra.Command, rotate bool) error {
+	h, err := home()
+	if err != nil {
+		return err
+	}
+	if _, err := paths.Ensure(h); err != nil {
+		return err
+	}
+	cfg, err := config.Load(paths.Config(h))
+	if err != nil {
+		return err
+	}
+	var tok string
+	if rotate {
+		tok, err = mcptoken.Rotate(paths.MCPToken(h))
+	} else {
+		tok, err = mcptoken.LoadOrCreate(paths.MCPToken(h))
+	}
+	if err != nil {
+		return err
+	}
+	exe, _ := os.Executable()
+	port, err := config.ListenPort(os.Getenv)
+	if err != nil {
+		return err
+	}
+	if w := cfg.RetiredWarning(); w != "" {
+		fmt.Fprintln(cmd.ErrOrStderr(), "warning: "+w)
+	}
+	printSetup(cmd.OutOrStdout(), exe, fmt.Sprintf("http://127.0.0.1:%d/mcp", port), tok)
+	if rotate && daemon.Running(h) {
+		fmt.Fprintln(cmd.OutOrStdout(), "\nThe running daemon still uses the old token: restart it with `social-mcp daemon stop && social-mcp daemon start`.")
+	}
+	return nil
+}
+
+// printSetup prints how to connect an AI app, for a person or for an agent asked to do it for them.
+func printSetup(out io.Writer, exe, url, tok string) {
+	entry := func(s stdioServer) string {
+		b, _ := json.Marshal(map[string]map[string]stdioServer{"mcpServers": {serverName: s}})
+		return string(b)
+	}
+	fmt.Fprint(out, "Connect social-mcp to your AI app once. The app then starts social-mcp by itself (and the daemon,\n"+
+		"when it is not running), so you never need to do this again.\n\n")
+	fmt.Fprint(out, "Easiest: let social-mcp do it\n"+
+		"  social-mcp connect claude-desktop\n"+
+		"  social-mcp connect claude-code\n"+
+		"  social-mcp connect cursor\n"+
+		"  social-mcp connect codex\n"+
+		"  social-mcp connect antigravity\n\n")
+	fmt.Fprintf(out, "Any other app on this machine: add this to its MCP settings file:\n  %s\n\n", entry(localServer(exe)))
+	if wsl.Detected() {
+		fmt.Fprintf(out, "Apps on Windows (social-mcp runs in WSL): use this entry instead; wsl.exe starts social-mcp inside WSL:\n  %s\n\n", entry(windowsServer(exe)))
+	}
+	fmt.Fprint(out, "Already connected through the HTTP endpoint or mcp-remote? Replace that social-mcp entry with one above.\n\n")
+	fmt.Fprintf(out, "HTTP, only for apps that cannot start a command (the daemon must already be running when the app starts):\n"+
+		"  MCP endpoint: %s\n  Bearer token: %s\n"+
+		"  claude mcp add --transport http %s %s --header \"Authorization: Bearer %s\"\n"+
+		"  (replace the token with `social-mcp connect --rotate-token`)\n", url, tok, serverName, url, tok)
 }

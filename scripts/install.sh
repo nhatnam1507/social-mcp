@@ -93,17 +93,28 @@ main() {
 	mv -f "$dir/.social-mcp.tmp.$$" "$target"
 
 	say "installed social-mcp $("$target" version 2>/dev/null || echo "$version") to $target"
+	cmd=social-mcp
 	case ":$PATH:" in
 	*":$dir:"*) ;;
 	*)
+		cmd="$target"
 		say ""
 		say "$dir is not on your PATH. Add this line to your shell profile (~/.bashrc, ~/.zshrc, ...):"
 		say "  export PATH=\"$dir:\$PATH\""
 		;;
 	esac
 	if [ "$upgrade" = true ]; then
-		say "A running daemon keeps the old version until you restart it: social-mcp daemon stop && social-mcp daemon start"
+		say "A running daemon keeps the old version until you restart it: $cmd daemon stop && $cmd daemon start"
+		return
 	fi
+	say ""
+	say "Next steps:"
+	say "  1. Start social-mcp:        $cmd daemon start"
+	say "  2. Sign in to an account:   $cmd account add youtube   (or tiktok, facebook, instagram)"
+	say "  3. Connect your AI app:     $cmd connect claude-desktop"
+	say "     (or: claude-code, cursor, codex, antigravity)"
+	say "     Other AI apps: run '$cmd connect' for the settings to paste,"
+	say "     or ask your AI agent to run '$cmd connect' and connect social-mcp for you."
 }
 
 main "$@"

@@ -63,7 +63,7 @@ func TestUpdateNoticeSkippedCommands(t *testing.T) {
 			t.Fatalf("config path did not print the notice: %q", stderr)
 		}
 	}
-	for _, path := range []string{"social-mcp mcp", "social-mcp daemon run", "social-mcp update"} {
+	for _, path := range []string{"social-mcp relay", "social-mcp daemon run", "social-mcp update"} {
 		if !noNoticeCommands[path] {
 			t.Fatalf("%s must not print the notice", path)
 		}
