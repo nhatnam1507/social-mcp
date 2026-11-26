@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
+	"github.com/nhatnam1507/social-mcp/internal/appauth"
 	"github.com/nhatnam1507/social-mcp/internal/logx"
 	"github.com/nhatnam1507/social-mcp/internal/oauth"
 	"github.com/nhatnam1507/social-mcp/internal/provider"
@@ -38,11 +40,14 @@ type Options struct {
 	Sessions    *oauth.Sessions
 	Jobs        JobControl
 	AllowedDirs []string
-	ListenPort  int
-	Version     string
-	KeyBackend  string
-	StartedAt   time.Time
-	Now         func() time.Time
+	// ClientIDs maps each platform to the client ID of the OAuth app that signs users in, so each
+	// login records which app issued it.
+	ClientIDs  map[string]string
+	ListenPort int
+	Version    string
+	KeyBackend string
+	StartedAt  time.Time
+	Now        func() time.Time
 	// UpdateNotice returns the agent's update notice once per release; nil when the update check is off.
 	UpdateNotice func() string
 }
@@ -115,9 +120,14 @@ func (l *Local) accountView(a store.Account, c store.Credential) AccountView {
 	v.Health, v.HealthDetail = Health(a, c, l.o.Now())
 	p, ok := l.o.Registry.Get(a.Platform)
 	if !ok {
-		v.HealthDetail = "platform " + a.Platform + " is not configured in config.toml"
+		v.HealthDetail = "platform " + a.Platform + " is not available in this build; " + unavailableHint(a.Platform)
 		v.Capabilities = provider.Capabilities{PrivacyLevels: []string{}, Restrictions: []string{}, Formats: []string{}}
 		return v
+	}
+	// TikTok gives every app its own user IDs, so an account from another app cannot be
+	// re-authorized in place; it has to be connected again.
+	if v.Health == HealthNeedsReauth && a.Platform == "tiktok" && c.ClientID != l.o.ClientIDs["tiktok"] {
+		v.HealthDetail = "connected through a different TikTok app: run `social-mcp account add tiktok`, then `social-mcp account remove " + a.ID + "`"
 	}
 	v.Capabilities = p.Capabilities(a.Meta)
 	if specs := p.Options(); specs != nil {
@@ -145,7 +155,7 @@ func (l *Local) RemoveAccount(id string) error {
 func (l *Local) BeginAuth(platform, reauthAccountID string) (AuthStart, error) {
 	p, ok := l.o.Registry.Get(platform)
 	if !ok {
-		return AuthStart{}, Invalid("platform %q is not configured; add its credentials to config.toml (configured: %v)", platform, l.o.Registry.Platforms())
+		return AuthStart{}, Invalid("platform %q is not available in this build (available: %v); %s", platform, l.o.Registry.Platforms(), unavailableHint(platform))
 	}
 	reauthExternal := ""
 	if reauthAccountID != "" {
@@ -161,6 +171,15 @@ func (l *Local) BeginAuth(platform, reauthAccountID string) (AuthStart, error) {
 	redirect := fmt.Sprintf("http://%s:%d/oauth/callback", p.RedirectHost(), l.o.ListenPort)
 	sess := l.o.Sessions.Begin(platform, redirect, reauthExternal)
 	return AuthStart{SessionID: sess.ID, AuthURL: p.AuthURL(sess.State, sess.Verifier, redirect)}, nil
+}
+
+// unavailableHint tells a power user how to bring their own app for a platform this build lacks.
+func unavailableHint(platform string) string {
+	vars := appauth.EnvVars[appauth.AppFor(platform)]
+	if len(vars) == 0 {
+		return "supported platforms are youtube, tiktok, facebook and instagram"
+	}
+	return "to use your own developer app, set " + strings.Join(vars, " / ") + " and restart the daemon"
 }
 
 // AuthSession reports a login's progress.
@@ -233,6 +252,7 @@ func (l *Local) completeAuth(ctx context.Context, sess oauth.Session, code, oaut
 	}
 	cred := store.Credential{
 		Platform:         sess.Platform,
+		ClientID:         l.o.ClientIDs[sess.Platform],
 		Subject:          subject,
 		SealedToken:      sealed,
 		ExpiresAt:        tok.Expiry,

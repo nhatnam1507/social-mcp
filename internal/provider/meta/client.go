@@ -14,16 +14,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nhatnam1507/social-mcp/internal/appauth"
 	"github.com/nhatnam1507/social-mcp/internal/provider"
 )
+
+// GraphVersion is the Graph API version every call uses.
+const GraphVersion = "v26.0"
+
+// TokenURL is the Graph API OAuth token endpoint.
+const TokenURL = "https://graph.facebook.com/" + GraphVersion + "/oauth/access_token"
 
 // Config holds the Meta app settings.
 type Config struct {
 	AppID         string
-	AppSecret     string
 	LoginConfigID string
-	GraphVersion  string
-	AppMode       string // "development" or "live"
+	AppMode       string                // "development" or "live"
+	Tokens        appauth.TokenEndpoint // code exchange and long-lived swap with the app's credentials
 }
 
 // Client calls the Graph API.
@@ -36,9 +42,9 @@ type Client struct {
 	HTTP        *http.Client
 }
 
-// NewClient returns a client for the configured Graph API version.
+// NewClient returns a client for GraphVersion.
 func NewClient(cfg Config) *Client {
-	v := cfg.GraphVersion
+	v := GraphVersion
 	return &Client{
 		Config:      cfg,
 		GraphBase:   "https://graph.facebook.com/" + v,
@@ -172,6 +178,11 @@ func (c *Client) do(req *http.Request, token string, out any) error {
 	if err != nil {
 		return err
 	}
+	return decode(resp, out)
+}
+
+// decode reads a Graph response, classifying errors and unmarshalling success into out.
+func decode(resp *http.Response, out any) error {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if resp.StatusCode != http.StatusOK {

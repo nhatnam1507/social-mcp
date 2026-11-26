@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nhatnam1507/social-mcp/internal/appauth"
 	"github.com/nhatnam1507/social-mcp/internal/config"
 	"github.com/nhatnam1507/social-mcp/internal/control"
 	"github.com/nhatnam1507/social-mcp/internal/enginetest"
@@ -230,7 +231,7 @@ func TestPortInUseFailsWithoutTouchingJobs(t *testing.T) {
 	}
 	defer busy.Close()
 	port := busy.Addr().(*net.TCPAddr).Port
-	os.WriteFile(paths.Config(d.home), []byte(fmt.Sprintf("[server]\nlisten_port = %d\n", port)), 0o600)
+	t.Setenv(config.ListenPortEnv, fmt.Sprint(port))
 
 	err = Run(context.Background(), Options{Home: d.home, Keyring: d.kr, Registry: d.reg, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err == nil || !strings.Contains(err.Error(), fmt.Sprint(port)) {
@@ -291,16 +292,42 @@ func TestCallbackHandler(t *testing.T) {
 	}
 }
 
-func TestBuildProvidersFollowsConfig(t *testing.T) {
-	cfg := config.Default()
-	if got := buildProviders(cfg, slog.Default()).Platforms(); len(got) != 0 {
-		t.Fatalf("empty config registered %v", got)
+func TestProvidersFollowApps(t *testing.T) {
+	if got := buildProviders(appauth.Apps{}).Platforms(); len(got) != 0 {
+		t.Fatalf("no apps registered %v", got)
 	}
-	cfg.YouTube = config.YouTube{ClientID: "a", ClientSecret: "b"}
-	cfg.TikTok = config.TikTok{ClientKey: "a", ClientSecret: "b"}
-	cfg.Meta.AppID, cfg.Meta.AppSecret, cfg.Meta.LoginConfigID = "a", "b", "c"
-	got := strings.Join(buildProviders(cfg, slog.Default()).Platforms(), ",")
+	got := strings.Join(buildProviders(appauth.Apps{YouTube: appauth.NewApp(appauth.YouTube, "a", "b", appauth.SourceEmbedded)}).Platforms(), ",")
+	if got != "youtube" {
+		t.Fatalf("youtube only = %s", got)
+	}
+	got = strings.Join(buildProviders(appauth.Apps{
+		YouTube: appauth.NewApp(appauth.YouTube, "a", "b", appauth.SourceEnv),
+		TikTok:  appauth.NewApp(appauth.TikTok, "a", "b", appauth.SourceEnv),
+		Meta:    appauth.NewApp(appauth.Meta, "a", "b", appauth.SourceEnv),
+	}).Platforms(), ",")
 	if got != "facebook,instagram,tiktok,youtube" {
 		t.Fatalf("platforms = %s", got)
+	}
+}
+
+func TestMarkOtherAppLoginsSkipsUnavailablePlatforms(t *testing.T) {
+	env := enginetest.New(t, "youtube", "tiktok")
+	ytCred, ytAcc := env.AddAccount(enginetest.AccountSpec{Platform: "youtube", ExternalID: "ch1"})
+	ttCred, _ := env.AddAccount(enginetest.AccountSpec{Platform: "tiktok", ExternalID: "tt1"})
+	apps := appauth.Apps{YouTube: appauth.NewApp(appauth.YouTube, "owner-app", "s", appauth.SourceEmbedded)}
+	if err := markOtherAppLogins(env.Store, apps, nil, slog.Default()); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := env.Store.GetCredential(ytCred.ID); c.Status != store.StatusNeedsReauth {
+		t.Fatalf("youtube login from an unknown app not flagged: %+v", c)
+	}
+	if a, _ := env.Store.GetAccount(ytAcc.ID); a.Status != store.StatusNeedsReauth {
+		t.Fatalf("youtube account not flagged: %+v", a)
+	}
+	if c, _ := env.Store.GetCredential(ttCred.ID); c.Status != store.StatusOK {
+		t.Fatalf("tiktok has no app in this build and must be left alone: %+v", c)
+	}
+	if got := clientIDs(apps); len(got) != 1 || got["youtube"] != "owner-app" {
+		t.Fatalf("client ids %v", got)
 	}
 }

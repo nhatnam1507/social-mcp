@@ -13,7 +13,15 @@ var (
 	ErrUnauthorized = errors.New("access token rejected")
 	// ErrOutcomeUnknown means a publish step may or may not have taken effect.
 	ErrOutcomeUnknown = errors.New("upload outcome unknown")
+	// ErrAppCredentials means the platform rejected the app identity itself, typically because the
+	// app secret was rotated after this build shipped.
+	ErrAppCredentials = errors.New("the platform rejected this social-mcp build's app credentials; run `social-mcp update`, or check your SOCIAL_MCP_* app override")
 )
+
+// AppCredentials returns a permanent ErrAppCredentials carrying the platform's detail.
+func AppCredentials(platform, detail string) error {
+	return &PermanentError{Msg: fmt.Sprintf("%s: %v (%s)", platform, ErrAppCredentials, detail), Err: ErrAppCredentials}
+}
 
 // PermanentError is a failure that retrying cannot fix (quota, policy, validation).
 type PermanentError struct {

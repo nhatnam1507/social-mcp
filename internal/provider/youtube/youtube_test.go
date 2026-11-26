@@ -15,13 +15,14 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/nhatnam1507/social-mcp/internal/appauth"
+	"github.com/nhatnam1507/social-mcp/internal/logx"
 	"github.com/nhatnam1507/social-mcp/internal/oauth"
 	"github.com/nhatnam1507/social-mcp/internal/provider"
 )
 
 func newTestProvider(srv *httptest.Server) *Provider {
-	p := New("client-id", "client-secret")
-	p.TokenURL = srv.URL + "/token"
+	p := New("client-id", appauth.NewApp(appauth.YouTube, "client-id", "client-secret", appauth.SourceEnv).TokenEndpoint(srv.URL+"/token"))
 	p.APIBase = srv.URL + "/youtube/v3"
 	p.UploadBase = srv.URL + "/upload/youtube/v3"
 	p.ChunkSize = 256 * 1024
@@ -29,7 +30,7 @@ func newTestProvider(srv *httptest.Server) *Provider {
 }
 
 func TestAuthURL(t *testing.T) {
-	p := New("cid", "secret")
+	p := New("cid", nil)
 	u, err := url.Parse(p.AuthURL("state1", "verifier-123", "http://127.0.0.1:8765/oauth/callback"))
 	if err != nil {
 		t.Fatal(err)
@@ -77,7 +78,7 @@ func TestExchangeAndRefresh(t *testing.T) {
 	if err != nil || tok.AccessToken != "at1" || tok.RefreshToken != "rt1" || tok.Expiry.IsZero() {
 		t.Fatalf("exchange: %+v %v", tok, err)
 	}
-	for k, v := range map[string]string{"code": "code1", "code_verifier": "verifier", "client_secret": "client-secret", "redirect_uri": "http://127.0.0.1:1/oauth/callback"} {
+	for k, v := range map[string]string{"code": "code1", "code_verifier": "verifier", "client_id": "client-id", "client_secret": "client-secret", "redirect_uri": "http://127.0.0.1:1/oauth/callback"} {
 		if lastForm.Get(k) != v {
 			t.Errorf("exchange form %s = %q", k, lastForm.Get(k))
 		}
@@ -91,6 +92,26 @@ func TestExchangeAndRefresh(t *testing.T) {
 	}
 	if _, err := p.Refresh(context.Background(), provider.Token{AccessToken: "x"}); !errors.Is(err, provider.ErrReauthRequired) {
 		t.Fatalf("refresh without refresh token: %v", err)
+	}
+}
+
+func TestRejectedAppCredentials(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"error":"invalid_client","error_description":"The OAuth client was not found."}`)
+	}))
+	defer srv.Close()
+	_, err := newTestProvider(srv).Refresh(context.Background(), provider.Token{RefreshToken: "rt"})
+	if !errors.Is(err, provider.ErrAppCredentials) || !provider.IsPermanent(err) || errors.Is(err, provider.ErrReauthRequired) {
+		t.Fatalf("err %v", err)
+	}
+}
+
+func TestTokenErrorDoesNotLeakSecret(t *testing.T) {
+	p := New("cid", appauth.NewApp(appauth.YouTube, "cid", "SECRETYT", appauth.SourceEnv).TokenEndpoint("http://127.0.0.1:1/token"))
+	_, err := p.Exchange(context.Background(), "code1", "verifier", "http://127.0.0.1:1/cb")
+	if err == nil || strings.Contains(logx.Error(err), "SECRETYT") {
+		t.Fatalf("err %v", err)
 	}
 }
 
@@ -128,7 +149,7 @@ func TestIdentities(t *testing.T) {
 }
 
 func TestValidateMeta(t *testing.T) {
-	p := New("a", "b")
+	p := New("a", nil)
 	ok := provider.VideoMeta{Title: "Hello", Privacy: provider.PrivacyPublic}
 	if err := p.ValidateMeta(ok); err != nil {
 		t.Fatal(err)

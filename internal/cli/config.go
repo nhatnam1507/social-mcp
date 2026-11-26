@@ -42,7 +42,7 @@ func configInitCmd() *cobra.Command {
 			if err := os.WriteFile(p, []byte(config.Template()), 0o600); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "wrote %s\nAdd your platform app credentials (see docs/platform-setup.md), then run `social-mcp daemon start`.\n", p)
+			fmt.Fprintf(cmd.OutOrStdout(), "wrote %s\nRun `social-mcp daemon start`, then `social-mcp account add <platform>`.\n", p)
 			return nil
 		},
 	}
@@ -94,7 +94,14 @@ func configMCPCmd() *cobra.Command {
 				return err
 			}
 			exe, _ := os.Executable()
-			url := fmt.Sprintf("http://127.0.0.1:%d/mcp", cfg.Server.ListenPort)
+			port, err := config.ListenPort(os.Getenv)
+			if err != nil {
+				return err
+			}
+			if w := cfg.RetiredWarning(); w != "" {
+				fmt.Fprintln(cmd.ErrOrStderr(), "warning: "+w)
+			}
+			url := fmt.Sprintf("http://127.0.0.1:%d/mcp", port)
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "MCP endpoint: %s\nBearer token: %s\n\n", url, tok)
 			fmt.Fprintf(out, "Claude Code (HTTP):\n  claude mcp add --transport http social-mcp %s --header \"Authorization: Bearer %s\"\n\n", url, tok)

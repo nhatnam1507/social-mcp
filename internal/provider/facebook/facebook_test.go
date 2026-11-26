@@ -123,7 +123,7 @@ func (f *fakeGraph) offsets(w http.ResponseWriter) {
 }
 
 func testProvider(srv *httptest.Server) *Provider {
-	c := meta.NewClient(meta.Config{AppID: "a", AppSecret: "s", LoginConfigID: "c", GraphVersion: "v26.0", AppMode: "development"})
+	c := meta.NewClient(meta.Config{AppID: "a", LoginConfigID: "c", AppMode: "development"})
 	c.GraphBase, c.VideoBase = srv.URL+"/graph", srv.URL+"/video"
 	return New(c)
 }

@@ -11,12 +11,15 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
+	"github.com/nhatnam1507/social-mcp/internal/appauth"
 	"github.com/nhatnam1507/social-mcp/internal/oauth"
 	"github.com/nhatnam1507/social-mcp/internal/provider"
 )
+
+// TokenURL is TikTok's OAuth token endpoint.
+const TokenURL = "https://open.tiktokapis.com/v2/oauth/token/"
 
 const (
 	scopes       = "user.info.basic,video.upload"
@@ -27,7 +30,7 @@ const (
 // Provider uploads drafts to TikTok.
 type Provider struct {
 	ClientKey    string
-	ClientSecret string
+	Tokens       appauth.TokenEndpoint
 	AuthBase     string
 	APIBase      string
 	PollInterval time.Duration
@@ -37,11 +40,12 @@ type Provider struct {
 
 var _ provider.Provider = (*Provider)(nil)
 
-// New returns a provider for a TikTok developer app.
-func New(clientKey, clientSecret string) *Provider {
+// New returns a provider for a TikTok developer app. tokens performs the code exchange and refresh
+// with the app's credentials.
+func New(clientKey string, tokens appauth.TokenEndpoint) *Provider {
 	return &Provider{
 		ClientKey:    clientKey,
-		ClientSecret: clientSecret,
+		Tokens:       tokens,
 		AuthBase:     "https://www.tiktok.com/v2/auth/authorize/",
 		APIBase:      "https://open.tiktokapis.com",
 		PollInterval: 5 * time.Second,
@@ -97,14 +101,7 @@ func (p *Provider) Refresh(ctx context.Context, tok provider.Token) (provider.To
 }
 
 func (p *Provider) token(ctx context.Context, form url.Values) (provider.Token, error) {
-	form.Set("client_key", p.ClientKey)
-	form.Set("client_secret", p.ClientSecret)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.APIBase+"/v2/oauth/token/", strings.NewReader(form.Encode()))
-	if err != nil {
-		return provider.Token{}, err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := p.HTTP.Do(req)
+	resp, err := p.Tokens.Do(ctx, form)
 	if err != nil {
 		return provider.Token{}, err
 	}
@@ -119,7 +116,7 @@ func (p *Provider) token(ctx context.Context, form url.Values) (provider.Token, 
 	// A refresh rejected by TikTok (expired, revoked or rotated-away token) needs a new login;
 	// a rejected app credential is a configuration problem instead.
 	if tr.Error == "invalid_client" {
-		return provider.Token{}, provider.Permanent("TikTok rejected the app credentials (client_key/client_secret): %s", tr.Description)
+		return provider.Token{}, provider.AppCredentials("TikTok", tr.Description)
 	}
 	if tr.Error == "invalid_grant" || (form.Get("grant_type") == "refresh_token" && tr.AccessToken == "" && resp.StatusCode < 500) {
 		return provider.Token{}, fmt.Errorf("%w: %s %s", provider.ErrReauthRequired, tr.Error, tr.Description)

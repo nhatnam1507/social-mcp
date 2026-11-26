@@ -1,9 +1,7 @@
 package daemon
 
 import (
-	"log/slog"
-
-	"github.com/nhatnam1507/social-mcp/internal/config"
+	"github.com/nhatnam1507/social-mcp/internal/appauth"
 	"github.com/nhatnam1507/social-mcp/internal/provider"
 	"github.com/nhatnam1507/social-mcp/internal/provider/facebook"
 	"github.com/nhatnam1507/social-mcp/internal/provider/instagram"
@@ -12,20 +10,19 @@ import (
 	"github.com/nhatnam1507/social-mcp/internal/provider/youtube"
 )
 
-// buildProviders registers every platform configured in cfg. This is the only place that
+// buildProviders registers every platform that has an app identity. This is the only place that
 // imports platform packages.
-func buildProviders(cfg config.Config, log *slog.Logger) provider.Registry {
+func buildProviders(apps appauth.Apps) provider.Registry {
 	reg := provider.Registry{}
-	if cfg.YouTubeEnabled() {
-		reg["youtube"] = youtube.New(cfg.YouTube.ClientID, cfg.YouTube.ClientSecret)
+	if a := apps.YouTube; a != nil {
+		reg["youtube"] = youtube.New(a.ClientID, a.TokenEndpoint(youtube.TokenURL))
 	}
-	if cfg.TikTokEnabled() {
-		reg["tiktok"] = tiktok.New(cfg.TikTok.ClientKey, cfg.TikTok.ClientSecret)
+	if a := apps.TikTok; a != nil {
+		reg["tiktok"] = tiktok.New(a.ClientID, a.TokenEndpoint(tiktok.TokenURL))
 	}
-	if cfg.MetaEnabled() {
+	if a := apps.Meta; a != nil {
 		c := meta.NewClient(meta.Config{
-			AppID: cfg.Meta.AppID, AppSecret: cfg.Meta.AppSecret, LoginConfigID: cfg.Meta.LoginConfigID,
-			GraphVersion: cfg.Meta.GraphVersion, AppMode: cfg.Meta.AppMode,
+			AppID: a.ClientID, LoginConfigID: a.LoginConfigID, AppMode: a.AppMode, Tokens: a.TokenEndpoint(meta.TokenURL),
 		})
 		reg["facebook"] = facebook.New(c)
 		reg["instagram"] = instagram.New(c)

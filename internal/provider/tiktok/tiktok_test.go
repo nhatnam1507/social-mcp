@@ -15,12 +15,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nhatnam1507/social-mcp/internal/appauth"
 	"github.com/nhatnam1507/social-mcp/internal/oauth"
 	"github.com/nhatnam1507/social-mcp/internal/provider"
 )
 
 func TestAuthURL(t *testing.T) {
-	p := New("ckey", "secret")
+	p := New("ckey", nil)
 	u, _ := url.Parse(p.AuthURL("st", "verifier-xyz", "http://127.0.0.1:8765/oauth/callback"))
 	q := u.Query()
 	if u.Host != "www.tiktok.com" || q.Get("client_key") != "ckey" || q.Get("client_id") != "" {
@@ -44,7 +45,7 @@ func TestExchangeRefresh(t *testing.T) {
 		fmt.Fprint(w, `{"access_token":"at","expires_in":7200,"refresh_token":"rt-new","refresh_expires_in":15552000,"open_id":"oid","scope":"user.info.basic,video.upload","token_type":"Bearer"}`)
 	}))
 	defer srv.Close()
-	p := New("ckey", "secret")
+	p := New("ckey", appauth.NewApp(appauth.TikTok, "ckey", "secret", appauth.SourceEnv).TokenEndpoint(srv.URL+"/v2/oauth/token/"))
 	p.APIBase = srv.URL
 	tok, err := p.Exchange(context.Background(), "c1", "ver", "http://127.0.0.1:1/oauth/callback")
 	if err != nil || tok.AccessToken != "at" || tok.RefreshToken != "rt-new" || tok.RefreshExpiry.Before(time.Now().Add(170*24*time.Hour)) {
@@ -74,7 +75,7 @@ func TestIdentities(t *testing.T) {
 		fmt.Fprint(w, `{"data":{"user":{"open_id":"oid1","display_name":"Creator"}},"error":{"code":"ok"}}`)
 	}))
 	defer srv.Close()
-	p := New("k", "s")
+	p := New("k", nil)
 	p.APIBase = srv.URL
 	sub, ids, err := p.Identities(context.Background(), provider.Token{AccessToken: "at"})
 	if err != nil || sub != "oid1" || ids[0].DisplayName != "Creator" {
@@ -225,7 +226,7 @@ func (r *recorder) progress(u provider.ProgressUpdate) error {
 }
 
 func testProvider(srv *httptest.Server) *Provider {
-	p := New("k", "s")
+	p := New("k", nil)
 	p.APIBase = srv.URL
 	p.PollInterval = time.Millisecond
 	p.PollTimeout = 200 * time.Millisecond

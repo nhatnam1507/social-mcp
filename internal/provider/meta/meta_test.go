@@ -10,12 +10,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nhatnam1507/social-mcp/internal/appauth"
 	"github.com/nhatnam1507/social-mcp/internal/logx"
 	"github.com/nhatnam1507/social-mcp/internal/provider"
 )
 
 func testClient(srv *httptest.Server) *Client {
-	c := NewClient(Config{AppID: "app", AppSecret: "SECRETAPP", LoginConfigID: "cfg1", GraphVersion: "v26.0", AppMode: "development"})
+	c := NewClient(Config{AppID: "app", LoginConfigID: "cfg1", AppMode: "development",
+		Tokens: appauth.NewApp(appauth.Meta, "app", "SECRETAPP", appauth.SourceEnv).TokenEndpoint(srv.URL + "/graph/oauth/access_token")})
 	c.GraphBase, c.VideoBase, c.RuploadBase = srv.URL+"/graph", srv.URL+"/video", srv.URL+"/rupload"
 	return c
 }
@@ -47,7 +49,7 @@ func TestClassify(t *testing.T) {
 }
 
 func TestAuthURLUsesConfigID(t *testing.T) {
-	c := NewClient(Config{AppID: "app", LoginConfigID: "cfg1", GraphVersion: "v26.0"})
+	c := NewClient(Config{AppID: "app", LoginConfigID: "cfg1"})
 	u, _ := url.Parse(c.AuthURL("st", "http://localhost:8765/oauth/callback"))
 	q := u.Query()
 	if u.Host != "www.facebook.com" || !strings.HasSuffix(u.Path, "/v26.0/dialog/oauth") || q.Get("config_id") != "cfg1" || q.Has("scope") || q.Get("response_type") != "code" {
@@ -60,7 +62,11 @@ func TestExchangeSwapsForLongLivedToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/graph/oauth/access_token":
-			q := r.URL.Query()
+			r.ParseForm()
+			q := r.PostForm
+			if q.Get("client_id") != "app" || q.Get("client_secret") != "SECRETAPP" || r.URL.RawQuery != "" {
+				t.Errorf("token call must carry the app credentials in the body: %v %q", q, r.URL.RawQuery)
+			}
 			calls = append(calls, q)
 			if q.Get("grant_type") == "fb_exchange_token" {
 				if q.Get("fb_exchange_token") != "short" {
@@ -91,11 +97,27 @@ func TestExchangeSwapsForLongLivedToken(t *testing.T) {
 }
 
 func TestTransportErrorDoesNotLeakSecret(t *testing.T) {
-	c := NewClient(Config{AppID: "app", AppSecret: "SECRETAPP", GraphVersion: "v26.0"})
-	c.GraphBase = "http://127.0.0.1:1/graph" // nothing listens here
+	c := NewClient(Config{AppID: "app", Tokens: appauth.NewApp(appauth.Meta, "app", "SECRETAPP", appauth.SourceEnv).TokenEndpoint("http://127.0.0.1:1/graph/oauth/access_token")}) // nothing listens here
 	_, err := c.Exchange(context.Background(), "code1", "http://localhost:1/cb")
 	if err == nil || strings.Contains(logx.Error(err), "SECRETAPP") {
 		t.Fatalf("err %v", logx.Error(err))
+	}
+}
+
+func TestExchangeRejectedAppCredentials(t *testing.T) {
+	for _, body := range []string{
+		`{"error":{"message":"Error validating client secret.","type":"OAuthException","code":1}}`,
+		`{"error":{"message":"Error validating application. Invalid application ID.","type":"OAuthException","code":101}}`,
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, body)
+		}))
+		_, err := testClient(srv).Exchange(context.Background(), "code1", "http://localhost:1/cb")
+		srv.Close()
+		if !errors.Is(err, provider.ErrAppCredentials) || !provider.IsPermanent(err) {
+			t.Errorf("%s -> %v", body, err)
+		}
 	}
 }
 

@@ -305,3 +305,65 @@ func TestUpgradeFromV1BacksUpAndAddsColumn(t *testing.T) {
 		t.Fatalf("backups before upgrade = %d, want 1", len(entries))
 	}
 }
+
+func TestMarkOtherAppLogins(t *testing.T) {
+	s := openTest(t)
+	login := func(platform, ext, clientID string) (Credential, Account) {
+		t.Helper()
+		c, accs, err := s.UpsertLogin(Credential{Platform: platform, Subject: "sub-" + ext, SealedToken: []byte("t"), ClientID: clientID},
+			[]Account{{Platform: platform, ExternalID: ext, DisplayName: ext}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c, accs[0]
+	}
+	status := func(c Credential, a Account) string {
+		t.Helper()
+		gc, _ := s.GetCredential(c.ID)
+		ga, _ := s.GetAccount(a.ID)
+		return gc.Status + "/" + ga.Status
+	}
+	current, curAcc := login("youtube", "ch-current", "owner-app")
+	legacy, legacyAcc := login("youtube", "ch-legacy", "")          // made before client IDs were recorded
+	other, otherAcc := login("youtube", "ch-other", "someone-else") // a different app
+	tiktok, tiktokAcc := login("tiktok", "tt", "")
+
+	n, err := s.MarkOtherAppLogins("youtube", "owner-app", "")
+	if err != nil || n != 2 {
+		t.Fatalf("marked %d, %v", n, err)
+	}
+	if got := status(current, curAcc); got != "ok/ok" {
+		t.Fatalf("current app login touched: %s", got)
+	}
+	for _, p := range []struct {
+		c Credential
+		a Account
+	}{{legacy, legacyAcc}, {other, otherAcc}} {
+		if got := status(p.c, p.a); got != "needs_reauth/needs_reauth" {
+			t.Fatalf("%s: %s", p.c.Subject, got)
+		}
+	}
+	if got := status(tiktok, tiktokAcc); got != "ok/ok" {
+		t.Fatalf("other platform touched: %s", got)
+	}
+	if n, _ := s.MarkOtherAppLogins("youtube", "owner-app", ""); n != 0 {
+		t.Fatalf("second run marked %d; it must be idempotent", n)
+	}
+
+	// The user's own app from the old config keeps unrecorded logins working under the same app.
+	if n, err := s.MarkOtherAppLogins("tiktok", "my-tiktok-app", "my-tiktok-app"); err != nil || n != 0 {
+		t.Fatalf("backfilled login marked: %d %v", n, err)
+	}
+	if c, _ := s.GetCredential(tiktok.ID); c.ClientID != "my-tiktok-app" || c.Status != StatusOK {
+		t.Fatalf("backfill %+v", c)
+	}
+
+	// Signing in again through the current app clears the flag.
+	if _, accs, err := s.UpsertLogin(Credential{Platform: "youtube", Subject: "sub-ch-legacy", SealedToken: []byte("t2"), ClientID: "owner-app"},
+		[]Account{{Platform: "youtube", ExternalID: "ch-legacy", DisplayName: "ch-legacy"}}); err != nil || accs[0].Status != StatusOK {
+		t.Fatalf("relogin %v %v", accs, err)
+	}
+	if got := status(legacy, legacyAcc); got != "ok/ok" {
+		t.Fatalf("relogin did not clear: %s", got)
+	}
+}
