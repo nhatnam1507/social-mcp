@@ -45,7 +45,9 @@ YouTube, Facebook and Instagram. TikTok gives every app its own user IDs, so run
 
 **Using your own app:** a platform's `SOCIAL_MCP_*` variables replace the built-in app for the daemon, for
 example `SOCIAL_MCP_YOUTUBE_CLIENT_ID` and `SOCIAL_MCP_YOUTUBE_CLIENT_SECRET`. The full list and how to register
-an app are in [docs/maintainer-oauth-apps.md](docs/maintainer-oauth-apps.md).
+an app are in [docs/maintainer-oauth-apps.md](docs/maintainer-oauth-apps.md). The daemon reads them when it
+starts, so start it with `social-mcp daemon start` from a shell where they are set: a daemon that your AI app
+starts for you sees only the app's environment and uses the built-in app.
 
 You can also download a binary from the [releases page](https://github.com/nhatnam1507/social-mcp/releases),
 or build from source with Go 1.26.1 or newer:
@@ -58,14 +60,51 @@ Supported: Linux, macOS and Windows 10 1803+ on amd64 and arm64.
 
 ## Quick start
 
+The installer ends with these three steps:
+
 ```sh
 social-mcp daemon start
-social-mcp account add youtube    # opens the browser to sign in; repeat for each account
-social-mcp config mcp             # prints the MCP endpoint, token and client setup commands
+social-mcp account add youtube          # opens the browser to sign in; repeat for each account
+social-mcp connect claude-desktop       # or: claude-code, cursor, codex, antigravity
 ```
 
-Then add the server to your MCP client. For Claude Code, run the `claude mcp add --transport http ...`
-command that `config mcp` prints. Clients that launch stdio servers can run `social-mcp mcp` instead.
+`connect` adds social-mcp to the app once:
+
+| App | What `connect` changes | Afterwards |
+|---|---|---|
+| `claude-desktop` | `claude_desktop_config.json` (found in any of the folders Claude Desktop versions use) | Quit Claude Desktop completely and open it again |
+| `claude-code` | Runs `claude mcp add --scope user` | New sessions connect; in an open one, `/mcp` then reconnect |
+| `cursor` | `~/.cursor/mcp.json` | Restart Cursor and check Cursor Settings > MCP |
+| `codex` | `~/.codex/config.toml` (or `$CODEX_HOME`), used by the Codex CLI and IDE extension | Start a new Codex session |
+| `antigravity` | `~/.gemini/config/mcp_config.json` | Restart Antigravity, or refresh under Manage MCP Servers |
+
+Your other servers and settings stay as they are, and the old file is saved next to it with a timestamped
+`.bak` name. An earlier `social-mcp` entry, such as an HTTP or `mcp-remote` one, is replaced. If the app's
+settings are not found, open the app once and run `connect` again, or pass the file with
+`--config-file <path>`.
+
+For any other app, `social-mcp connect` (with no app) prints what to paste: an `mcpServers` entry with your
+binary's real path. You can also ask an agent that can run commands to run `social-mcp connect` and connect
+social-mcp for you.
+
+The entry tells the app to start `social-mcp relay`, a small relay that passes the app's messages to the daemon.
+You never run it yourself. The daemon already serves MCP, but most apps reach a local server by starting a
+program, and the relay also starts the daemon when it is not running (also mid-session, if the daemon was
+stopped). So you connect only once and never need the daemon running before the app.
+
+**social-mcp in WSL, apps on Windows:** run `connect` inside WSL. For the desktop apps (Claude Desktop,
+Cursor, Antigravity) it edits the settings in your Windows profile and adds an entry that runs
+`wsl.exe -d <distro> -- <path>/social-mcp relay`, so the Windows app reaches social-mcp in WSL without Node.js
+or a token. Claude Code and Codex are terminal tools, so `connect` sets them up inside WSL, next to
+social-mcp. Agents on Windows can name files the Windows way (`C:\Users\me\Videos\launch.mp4`); the daemon
+reads them under `/mnt/c/...`.
+
+`social-mcp connect` also shows the HTTP endpoint and bearer token for apps that can only connect over HTTP
+(`--rotate-token` replaces the token). An HTTP connection works only when the daemon is already running as
+the app starts; most apps do not retry later (in Claude Code, `/mcp` then **Reconnect**). If you connected
+through HTTP or `mcp-remote` before, run `social-mcp connect <app>` (it replaces the old `social-mcp` entry)
+or replace the entry with the one `social-mcp connect` prints. The older `social-mcp config mcp` still works
+and prints the same as `social-mcp connect`.
 
 Now ask your agent something like *"upload /home/me/Videos/launch.mp4 to my YouTube channel as unlisted"*.
 The agent calls `list_accounts`, then `upload_video`, which returns the queued job IDs straight away. Uploads keep running in the daemon; the agent checks `get_upload_status` or `list_uploads` only when you ask about progress or results.
@@ -83,8 +122,8 @@ The agent calls `list_accounts`, then `upload_video`, which returns the queued j
 | `account reauth <id>` | Sign in again when an account shows `needs_reauth` or `expiring` |
 | `account remove <id> [--yes]` | Delete an account and its stored tokens |
 | `config init [--force]` / `config path` | Write the starter config / show file locations |
-| `config mcp [--rotate]` | Show the MCP endpoint and token, or generate a new token (then restart the daemon) |
-| `mcp` | Serve MCP over stdio, backed by the running daemon |
+| `connect <claude-desktop\|claude-code\|cursor\|codex\|antigravity> [--config-file F]` | Connect social-mcp to an AI app once (inside WSL, desktop apps are set up on the Windows side) |
+| `connect [--rotate-token]` | Show the settings to paste into any other AI app, plus the HTTP endpoint and token |
 | `version` | Print the version |
 | `update [--version TAG]` | Install the latest release (or `TAG`) in place and restart a running daemon |
 
@@ -191,7 +230,7 @@ writes `./.dev/config.toml`. Source builds carry no app identity, so `make run` 
 ```sh
 make run                              # daemon in the foreground; Ctrl+C stops it
 make run ARGS="account add youtube"   # connect a test account to the dev home
-make run ARGS="config mcp"            # MCP endpoint and token of the dev daemon
+make run ARGS="connect"               # agent setup, MCP endpoint and token of the dev daemon
 ```
 
 The dev home listens on port 8765 like a normal install. Stop your real daemon first, or set
