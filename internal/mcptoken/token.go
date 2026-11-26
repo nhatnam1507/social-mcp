@@ -20,7 +20,7 @@ func Load(path string) (string, error) {
 	}
 	tok := strings.TrimSpace(string(b))
 	if !valid(tok) {
-		return "", fmt.Errorf("%s is not a valid MCP token (expected 64 hex characters); run `social-mcp config mcp --rotate`", path)
+		return "", fmt.Errorf("%s is not a valid MCP token (expected 64 hex characters); run `social-mcp connect --rotate-token`", path)
 	}
 	return tok, nil
 }

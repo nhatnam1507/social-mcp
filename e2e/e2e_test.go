@@ -164,8 +164,8 @@ func TestEndToEnd(t *testing.T) {
 		t.Fatalf("foreign host: %v %v", resp, err)
 	}
 
-	// The relay under its v0.2.0 name, which apps connected then still start.
-	cmd := exec.Command(e.bin, "mcp")
+	// The relay that apps start.
+	cmd := exec.Command(e.bin, "relay")
 	cmd.Env = e.environ()
 	stdio, err := mcp.NewClient(&mcp.Implementation{Name: "e2e-stdio"}, nil).Connect(context.Background(), &mcp.CommandTransport{Command: cmd}, nil)
 	if err != nil {

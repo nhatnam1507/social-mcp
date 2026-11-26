@@ -19,9 +19,8 @@ import (
 
 func relayCmd(version string) *cobra.Command {
 	return &cobra.Command{
-		Use:     "relay",
-		Aliases: []string{"mcp"}, // its name in v0.2.0 and earlier, still in apps connected then
-		Short:   "Relay between an AI app and the daemon (the app runs this; you never need to)",
+		Use:   "relay",
+		Short: "Relay between an AI app and the daemon (the app runs this; you never need to)",
 		Long: "The command AI apps start to talk to social-mcp: it relays MCP messages over stdin/stdout to the\n" +
 			"running daemon, and starts the daemon when it is not running. `social-mcp connect` sets apps up to use it.",
 		Hidden: true,

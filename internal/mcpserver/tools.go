@@ -68,7 +68,7 @@ func addTools(s *mcp.Server, svc service.Service) {
 		}
 		out := listAccountsOut{Accounts: accs}
 		if err == nil {
-			// Best effort: an older daemon behind `social-mcp mcp` has no notice to give.
+			// Best effort: an older daemon behind the relay has no notice to give.
 			out.Notice, _ = svc.TakeUpdateNotice()
 		}
 		return nil, out, clean(err)

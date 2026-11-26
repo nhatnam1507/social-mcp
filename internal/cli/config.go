@@ -17,8 +17,14 @@ import (
 )
 
 func configCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "config", Short: "Create and inspect configuration"}
-	cmd.AddCommand(configInitCmd(), configPathCmd(), configMCPCmd())
+	cmd := &cobra.Command{
+		Use:   "config",
+		Short: "Create and inspect configuration",
+		// Reject unknown subcommands, such as `config mcp` from older releases, instead of printing help.
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
+	}
+	cmd.AddCommand(configInitCmd(), configPathCmd())
 	return cmd
 }
 
@@ -67,21 +73,6 @@ func configPathCmd() *cobra.Command {
 			return nil
 		},
 	}
-}
-
-// configMCPCmd is the older name of `social-mcp connect` without an app, kept hidden so existing
-// scripts and instructions keep working.
-func configMCPCmd() *cobra.Command {
-	var rotate bool
-	cmd := &cobra.Command{
-		Use:    "mcp",
-		Short:  "Same as `social-mcp connect` without an app",
-		Hidden: true,
-		Args:   cobra.NoArgs,
-		RunE:   func(cmd *cobra.Command, _ []string) error { return showSetup(cmd, rotate) },
-	}
-	cmd.Flags().BoolVar(&rotate, "rotate", false, "generate a new HTTP token (restart the daemon afterwards)")
-	return cmd
 }
 
 // showSetup prints how to connect any AI app, including the HTTP endpoint and its token, which it

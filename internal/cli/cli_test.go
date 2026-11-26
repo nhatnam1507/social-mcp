@@ -121,21 +121,26 @@ func TestAccountAddPrintsURLAndWaits(t *testing.T) {
 }
 
 func TestConnectWithoutAppPrintsSetup(t *testing.T) {
-	// `config mcp` is the older, hidden name for the same output.
-	for _, args := range [][]string{{"connect"}, {"config", "mcp"}} {
-		out, err := run(t, &stubService{}, args...)
-		if err != nil {
-			t.Fatalf("%v: %v", args, err)
+	out, err := run(t, &stubService{}, "connect")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"social-mcp connect claude-desktop",
+		"social-mcp connect antigravity",
+		`"args":["relay"]`,
+		"claude mcp add --transport http social-mcp http://127.0.0.1:8765/mcp",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output lacks %q:\n%s", want, out)
 		}
-		for _, want := range []string{
-			"social-mcp connect claude-desktop",
-			"social-mcp connect antigravity",
-			`"args":["relay"]`,
-			"claude mcp add --transport http social-mcp http://127.0.0.1:8765/mcp",
-		} {
-			if !strings.Contains(out, want) {
-				t.Fatalf("%v output lacks %q:\n%s", args, want, out)
-			}
+	}
+}
+
+func TestOldMCPCommandsRemoved(t *testing.T) {
+	for _, args := range [][]string{{"mcp"}, {"config", "mcp"}} {
+		if _, err := run(t, &stubService{}, args...); err == nil || !strings.Contains(err.Error(), "unknown command") {
+			t.Fatalf("%v: err = %v", args, err)
 		}
 	}
 }
