@@ -121,7 +121,7 @@ func (f *fakeIG) server(t *testing.T) *httptest.Server {
 }
 
 func testProvider(srv *httptest.Server) *Provider {
-	c := meta.NewClient(meta.Config{AppID: "a", AppSecret: "s", LoginConfigID: "c", GraphVersion: "v26.0", AppMode: "live"})
+	c := meta.NewClient(meta.Config{AppID: "a", LoginConfigID: "c", AppMode: "live"})
 	c.GraphBase, c.RuploadBase = srv.URL+"/graph", srv.URL+"/rupload"
 	p := New(c)
 	p.PollInterval, p.PollTimeout = time.Millisecond, 200*time.Millisecond
@@ -160,7 +160,7 @@ func TestIdentities(t *testing.T) {
 }
 
 func TestCaptionLimits(t *testing.T) {
-	p := New(meta.NewClient(meta.Config{GraphVersion: "v26.0"}))
+	p := New(meta.NewClient(meta.Config{}))
 	if c := caption(provider.VideoMeta{Title: "T", Description: "D", Tags: []string{"a b", "#c"}}); c != "T\n\nD\n\n#ab #c" {
 		t.Fatalf("caption %q", c)
 	}
@@ -248,7 +248,7 @@ func TestCommittingWithUnknownStateIsOutcomeUnknown(t *testing.T) {
 
 func TestServiceRejectsPrivateInstagram(t *testing.T) {
 	env := enginetest.New(t)
-	env.Registry["instagram"] = New(meta.NewClient(meta.Config{GraphVersion: "v26.0", AppMode: "development"}))
+	env.Registry["instagram"] = New(meta.NewClient(meta.Config{AppMode: "development"}))
 	_, acc := env.AddAccount(enginetest.AccountSpec{Platform: "instagram", ExternalID: "ig1"})
 	svc := env.Local(nil, nil)
 	for _, privacy := range []string{"", provider.PrivacyPrivate, provider.PrivacyUnlisted} {

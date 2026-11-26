@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/nhatnam1507/social-mcp/internal/provider"
@@ -30,15 +31,11 @@ type tokenResponse struct {
 // Exchange trades the code for a short-lived user token, then for a long-lived one (~60 days).
 func (c *Client) Exchange(ctx context.Context, code, redirectURI string) (provider.Token, error) {
 	var short tokenResponse
-	if err := c.Get(ctx, c.GraphBase, "/oauth/access_token", url.Values{
-		"client_id": {c.AppID}, "client_secret": {c.AppSecret}, "redirect_uri": {redirectURI}, "code": {code},
-	}, "", &short); err != nil {
+	if err := c.token(ctx, url.Values{"redirect_uri": {redirectURI}, "code": {code}}, &short); err != nil {
 		return provider.Token{}, err
 	}
 	var long tokenResponse
-	if err := c.Get(ctx, c.GraphBase, "/oauth/access_token", url.Values{
-		"grant_type": {"fb_exchange_token"}, "client_id": {c.AppID}, "client_secret": {c.AppSecret}, "fb_exchange_token": {short.AccessToken},
-	}, "", &long); err != nil {
+	if err := c.token(ctx, url.Values{"grant_type": {"fb_exchange_token"}, "fb_exchange_token": {short.AccessToken}}, &long); err != nil {
 		return provider.Token{}, err
 	}
 	if long.AccessToken == "" {
@@ -49,6 +46,21 @@ func (c *Client) Exchange(ctx context.Context, code, redirectURI string) (provid
 		t.Expiry = time.Now().Add(time.Duration(long.ExpiresIn) * time.Second)
 	}
 	return t, nil
+}
+
+// token calls the OAuth token endpoint, which adds the app's credentials.
+func (c *Client) token(ctx context.Context, params url.Values, out *tokenResponse) error {
+	resp, err := c.Tokens.Do(ctx, params)
+	if err != nil {
+		return err
+	}
+	err = decode(resp, out)
+	var ge *GraphError
+	// 101: invalid application ID; 1 with "client secret": the app secret was rejected.
+	if errors.As(err, &ge) && (ge.Code == 101 || (ge.Code == 1 && strings.Contains(strings.ToLower(ge.Message), "client secret"))) {
+		return provider.AppCredentials("Meta", ge.Message)
+	}
+	return err
 }
 
 // Me returns the Facebook user ID behind a user token.

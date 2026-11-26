@@ -11,8 +11,8 @@ tools so an agent can see which accounts are connected and upload a local video 
 | Facebook Pages | Uploads to a Page you manage (published, or unpublished for `private`) |
 | Instagram Reels | Publishes a Reel on a professional account linked to a Page (always public) |
 
-Tokens never leave your machine except to the platform they belong to. You register your own developer app
-on each platform; see [docs/platform-setup.md](docs/platform-setup.md).
+Tokens never leave your machine except to the platform they belong to. There is nothing to register:
+social-mcp signs you in through its own app on each platform.
 
 ## Install
 
@@ -37,6 +37,16 @@ To upgrade later, run `social-mcp update` (running the install command again als
 latest release over the current binary, verified against `SHA256SUMS`, and restarts the daemon if it was
 running. When a new release comes out, social-mcp tells you once in the terminal and once through your agent.
 
+**Upgrading from a release that used your own developer apps:** the platform sections in `config.toml` are now
+ignored (the daemon lists them in a warning; you can delete them), and the listener always uses port 8765.
+Accounts you connected through your own apps show `needs_reauth`. Run `social-mcp account reauth <id>` for
+YouTube, Facebook and Instagram. TikTok gives every app its own user IDs, so run
+`social-mcp account add tiktok` and then `social-mcp account remove <old-id>`.
+
+**Using your own app:** a platform's `SOCIAL_MCP_*` variables replace the built-in app for the daemon, for
+example `SOCIAL_MCP_YOUTUBE_CLIENT_ID` and `SOCIAL_MCP_YOUTUBE_CLIENT_SECRET`. The full list and how to register
+an app are in [docs/maintainer-oauth-apps.md](docs/maintainer-oauth-apps.md).
+
 You can also download a binary from the [releases page](https://github.com/nhatnam1507/social-mcp/releases),
 or build from source with Go 1.26.1 or newer:
 
@@ -49,8 +59,6 @@ Supported: Linux, macOS and Windows 10 1803+ on amd64 and arm64.
 ## Quick start
 
 ```sh
-social-mcp config init            # writes config.toml; `social-mcp config path` shows where
-# edit config.toml: add the credentials of the platforms you use (docs/platform-setup.md)
 social-mcp daemon start
 social-mcp account add youtube    # opens the browser to sign in; repeat for each account
 social-mcp config mcp             # prints the MCP endpoint, token and client setup commands
@@ -115,6 +123,9 @@ publish twice.
   owned by another user. On Windows the folder name is derived from your account's SID.
 - On Windows, the access list is only applied when `SOCIAL_MCP_HOME` is a directory used only by social-mcp; a
   shared directory is left unchanged with a warning.
+- OAuth sign-in uses PKCE and a one-time `state`, and the platform redirects only to the loopback callback on
+  port 8765, so login codes land on your own machine. Release binaries embed social-mcp's app identity; the
+  app secret is extractable from the binary, which gives no access to your accounts or tokens.
 - The MCP endpoint listens only on `127.0.0.1`/`[::1]`. It requires the bearer token and rejects foreign
   `Host` and `Origin` headers, which blocks DNS rebinding and web pages.
 - Agents cannot connect or remove accounts; only the CLI can.
@@ -132,8 +143,8 @@ publish twice.
 
 These were verified against platform documentation on 2026-11-02:
 
-- **YouTube:** the API allows 100 uploads per day per Google Cloud project. While the OAuth consent screen is
-  in "Testing" status, logins expire after 7 days, so set it to "In production".
+- **YouTube:** the API allows 100 uploads per day per Google Cloud project, shared by everyone using the
+  built-in app.
 - **TikTok:** apps for personal use can't get public Direct Post, so uploads go to the inbox as drafts. TikTok
   allows at most 5 pending drafts per 24 hours and videos up to 10 minutes.
 - **Facebook:** posts to Pages only, not personal profiles. Posts made while the Meta app is in Development
@@ -143,7 +154,8 @@ These were verified against platform documentation on 2026-11-02:
 
 ## Documentation
 
-- [Platform setup](docs/platform-setup.md): register the developer apps and fill in `config.toml`
+- [Maintainer: OAuth apps and release secrets](docs/maintainer-oauth-apps.md): how the built-in apps are
+  registered, how releases get their secrets, and how to use your own app
 - [Architecture](docs/architecture.md): components, storage and the upload lifecycle
 
 ## Development
@@ -171,8 +183,10 @@ Go toolchain GoReleaser needs), later runs are fast.
 
 `make run` builds the binary and runs `social-mcp daemon run` with `SOCIAL_MCP_HOME=./.dev` and
 `SOCIAL_MCP_KEYRING=off`, so development never touches your real config, accounts or OS keyring. The first run
-writes `./.dev/config.toml`; add your development app credentials there (see
-[Platform setup](docs/platform-setup.md)). Run any other command against the same dev home with `ARGS`:
+writes `./.dev/config.toml`. Source builds carry no app identity, so `make run` loads your development app from
+`./.env`: copy `.env.example` to `.env` (git-ignored) and fill in the platforms you work on (see
+[Maintainer: OAuth apps](docs/maintainer-oauth-apps.md)). Run any other command against the same dev home with
+`ARGS`:
 
 ```sh
 make run                              # daemon in the foreground; Ctrl+C stops it
@@ -180,8 +194,8 @@ make run ARGS="account add youtube"   # connect a test account to the dev home
 make run ARGS="config mcp"            # MCP endpoint and token of the dev daemon
 ```
 
-The dev home listens on port 8765 like a normal install. Stop your real daemon first, or change `listen_port`
-in `./.dev/config.toml` and register that port's OAuth redirect URIs for your development apps.
+The dev home listens on port 8765 like a normal install. Stop your real daemon first, or set
+`SOCIAL_MCP_LISTEN_PORT` in `.env` (development only; Meta sign-in needs 8765).
 
 ### CI
 

@@ -56,17 +56,13 @@ func setup(t *testing.T) *env {
 	}
 	port := ln.Addr().(*net.TCPAddr).Port
 	ln.Close()
-	cfg := fmt.Sprintf("[server]\nlisten_port = %d\n", port)
-	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(cfg), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	e := &env{t: t, bin: bin, home: home, port: port}
 	t.Cleanup(func() { e.run("daemon", "stop") })
 	return e
 }
 
 func (e *env) environ() []string {
-	return append(os.Environ(), "SOCIAL_MCP_HOME="+e.home, "SOCIAL_MCP_KEYRING=off")
+	return append(os.Environ(), "SOCIAL_MCP_HOME="+e.home, "SOCIAL_MCP_KEYRING=off", fmt.Sprintf("SOCIAL_MCP_LISTEN_PORT=%d", e.port))
 }
 
 func (e *env) run(args ...string) (string, int) {

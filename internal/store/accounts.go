@@ -26,6 +26,7 @@ type Credential struct {
 	Refreshable      bool
 	Status           string
 	Version          int64
+	ClientID         string // the OAuth app that issued the login
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -45,7 +46,7 @@ type Account struct {
 	UpdatedAt             time.Time
 }
 
-const credentialCols = "id, platform, subject, sealed_token, expires_at, refresh_expires_at, refreshable, status, version, created_at, updated_at"
+const credentialCols = "id, platform, subject, sealed_token, expires_at, refresh_expires_at, refreshable, status, version, client_id, created_at, updated_at"
 
 type rowScanner interface{ Scan(...any) error }
 
@@ -53,7 +54,7 @@ func scanCredential(r rowScanner) (Credential, error) {
 	var c Credential
 	var exp, rexp sql.NullInt64
 	var created, updated int64
-	err := r.Scan(&c.ID, &c.Platform, &c.Subject, &c.SealedToken, &exp, &rexp, &c.Refreshable, &c.Status, &c.Version, &created, &updated)
+	err := r.Scan(&c.ID, &c.Platform, &c.Subject, &c.SealedToken, &exp, &rexp, &c.Refreshable, &c.Status, &c.Version, &c.ClientID, &created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, ErrNotFound
 	}
@@ -99,13 +100,13 @@ func (s *Store) UpsertLogin(c Credential, accounts []Account) (Credential, []Acc
 	case err == nil:
 		c.ID = existing.ID
 		_, err = tx.Exec(`UPDATE credentials SET sealed_token = ?, expires_at = ?, refresh_expires_at = ?, refreshable = ?,
-			status = 'ok', version = version + 1, updated_at = ? WHERE id = ?`,
-			c.SealedToken, ms(c.ExpiresAt), ms(c.RefreshExpiresAt), c.Refreshable, now, c.ID)
+			client_id = ?, status = 'ok', version = version + 1, updated_at = ? WHERE id = ?`,
+			c.SealedToken, ms(c.ExpiresAt), ms(c.RefreshExpiresAt), c.Refreshable, c.ClientID, now, c.ID)
 	case errors.Is(err, ErrNotFound):
 		c.ID = ids.New("cred")
-		_, err = tx.Exec(`INSERT INTO credentials(id, platform, subject, sealed_token, expires_at, refresh_expires_at, refreshable, status, version, created_at, updated_at)
-			VALUES(?, ?, ?, ?, ?, ?, ?, 'ok', 1, ?, ?)`,
-			c.ID, c.Platform, c.Subject, c.SealedToken, ms(c.ExpiresAt), ms(c.RefreshExpiresAt), c.Refreshable, now, now)
+		_, err = tx.Exec(`INSERT INTO credentials(id, platform, subject, sealed_token, expires_at, refresh_expires_at, refreshable, status, version, client_id, created_at, updated_at)
+			VALUES(?, ?, ?, ?, ?, ?, ?, 'ok', 1, ?, ?, ?)`,
+			c.ID, c.Platform, c.Subject, c.SealedToken, ms(c.ExpiresAt), ms(c.RefreshExpiresAt), c.Refreshable, c.ClientID, now, now)
 	}
 	if err != nil {
 		return c, nil, err
@@ -156,6 +157,38 @@ func (s *Store) UpsertLogin(c Credential, accounts []Account) (Credential, []Acc
 // GetCredential returns one credential.
 func (s *Store) GetCredential(id string) (Credential, error) {
 	return scanCredential(s.r.QueryRow("SELECT "+credentialCols+" FROM credentials WHERE id = ?", id))
+}
+
+// MarkOtherAppLogins flags the platform's logins issued by an app other than activeClientID as
+// needs_reauth, with their accounts, since the active app cannot refresh or use their tokens.
+// Logins with no recorded app first take backfillClientID when it is set (the app the user had
+// configured before client IDs were recorded). It returns the number of logins flagged.
+func (s *Store) MarkOtherAppLogins(platform, activeClientID, backfillClientID string) (int, error) {
+	tx, err := s.w.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	now := nowMs()
+	if backfillClientID != "" {
+		if _, err := tx.Exec("UPDATE credentials SET client_id = ? WHERE platform = ? AND client_id = ''", backfillClientID, platform); err != nil {
+			return 0, err
+		}
+	}
+	if _, err := tx.Exec(`UPDATE accounts SET status = 'needs_reauth', updated_at = ? WHERE status != 'needs_reauth' AND credential_id IN
+		(SELECT id FROM credentials WHERE platform = ? AND client_id != ?)`, now, platform, activeClientID); err != nil {
+		return 0, err
+	}
+	res, err := tx.Exec(`UPDATE credentials SET status = 'needs_reauth', version = version + 1, updated_at = ?
+		WHERE platform = ? AND client_id != ? AND status != 'needs_reauth'`, now, platform, activeClientID)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return int(n), tx.Commit()
 }
 
 // ListCredentials returns all credentials.

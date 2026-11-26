@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nhatnam1507/social-mcp/internal/appauth"
 	"github.com/nhatnam1507/social-mcp/internal/config"
 	"github.com/nhatnam1507/social-mcp/internal/control"
 	"github.com/nhatnam1507/social-mcp/internal/mcptoken"
@@ -44,7 +45,7 @@ type Options struct {
 	SocketPath string            // default paths.SocketPath(Home)
 	Ephemeral  bool              // bind a random loopback port (tests)
 	Keyring    secrets.Keyring   // default OS keyring
-	Registry   provider.Registry // default: built from config
+	Registry   provider.Registry // default: built from the resolved app identities
 	Log        *slog.Logger
 	Ready      func(Info) // called once the daemon is serving
 }
@@ -90,6 +91,17 @@ func Run(ctx context.Context, o Options) error {
 	if err != nil {
 		return err
 	}
+	if w := cfg.RetiredWarning(); w != "" {
+		log.Warn(w)
+	}
+	listenPort, err := config.ListenPort(os.Getenv)
+	if err != nil {
+		return err
+	}
+	apps, err := appauth.Resolve(os.Getenv)
+	if err != nil {
+		return err
+	}
 
 	// 2. Bind every listener before touching jobs, so a failed start changes nothing.
 	sock := o.SocketPath
@@ -112,7 +124,7 @@ func Run(ctx context.Context, o Options) error {
 			return err
 		}
 	}
-	loopLns, port, err := listenLoopback(cfg.Server.ListenPort, o.Ephemeral, log)
+	loopLns, port, err := listenLoopback(listenPort, o.Ephemeral, log)
 	if err != nil {
 		return err
 	}
@@ -144,7 +156,11 @@ func Run(ctx context.Context, o Options) error {
 	}
 	reg := o.Registry
 	if reg == nil {
-		reg = buildProviders(cfg, log)
+		reg = buildProviders(apps)
+		logApps(log, apps)
+		if err := markOtherAppLogins(st, apps, cfg.LegacyClientIDs, log); err != nil {
+			return err
+		}
 	}
 
 	// 4. Engine.
@@ -161,7 +177,7 @@ func Run(ctx context.Context, o Options) error {
 	}
 	svc := service.NewLocal(service.Options{
 		Store: st, Tokens: tm, Registry: reg, Sessions: oauth.NewSessions(), Jobs: run,
-		AllowedDirs: cfg.Uploads.AllowedDirs, ListenPort: port, Version: o.Version, KeyBackend: key.Backend, StartedAt: time.Now(),
+		AllowedDirs: cfg.Uploads.AllowedDirs, ClientIDs: clientIDs(apps), ListenPort: port, Version: o.Version, KeyBackend: key.Backend, StartedAt: time.Now(),
 		UpdateNotice: updateNotice,
 	})
 	if err := run.Start(); err != nil {
@@ -224,6 +240,50 @@ func Run(ctx context.Context, o Options) error {
 	return runErr
 }
 
+// platforms lists every provider platform.
+var platforms = []string{"youtube", "tiktok", "facebook", "instagram"}
+
+// clientIDs maps each available platform to its app's client ID.
+func clientIDs(apps appauth.Apps) map[string]string {
+	out := map[string]string{}
+	for _, p := range platforms {
+		if a := apps.Get(appauth.AppFor(p)); a != nil {
+			out[p] = a.ClientID
+		}
+	}
+	return out
+}
+
+func logApps(log *slog.Logger, apps appauth.Apps) {
+	for _, name := range []string{appauth.YouTube, appauth.TikTok, appauth.Meta} {
+		if a := apps.Get(name); a != nil {
+			log.Info("app identity", "app", name, "identity", a)
+		} else {
+			log.Info("app identity unavailable in this build", "app", name, "override", strings.Join(appauth.EnvVars[name], ", "))
+		}
+	}
+}
+
+// markOtherAppLogins flags logins issued by an app other than the one now in use, which cannot
+// refresh or use their tokens. Platforms without an app are left alone: they are unusable until an
+// app is available, and the check runs again on that start.
+func markOtherAppLogins(st *store.Store, apps appauth.Apps, legacy map[string]string, log *slog.Logger) error {
+	for _, p := range platforms {
+		app := apps.Get(appauth.AppFor(p))
+		if app == nil {
+			continue
+		}
+		n, err := st.MarkOtherAppLogins(p, app.ClientID, legacy[appauth.AppFor(p)])
+		if err != nil {
+			return fmt.Errorf("check %s logins against the current app: %w", p, err)
+		}
+		if n > 0 {
+			log.Warn("logins made through a different app need signing in again; see `social-mcp account list`", "platform", p, "logins", n)
+		}
+	}
+	return nil
+}
+
 // listenLoopback binds 127.0.0.1:port and, when available, [::1]:port.
 func listenLoopback(port int, ephemeral bool, log *slog.Logger) ([]net.Listener, int, error) {
 	if ephemeral {
@@ -231,7 +291,7 @@ func listenLoopback(port int, ephemeral bool, log *slog.Logger) ([]net.Listener,
 	}
 	ln4, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 	if err != nil {
-		return nil, 0, fmt.Errorf("listen on 127.0.0.1:%d: %w (another process owns the port; find it with `lsof -i :%d` or `netstat -ano`, or change server.listen_port)", port, err, port)
+		return nil, 0, fmt.Errorf("listen on 127.0.0.1:%d: %w (another process owns the port, which social-mcp needs for sign-in redirects; find it with `lsof -i :%d` or `netstat -ano` and stop it)", port, err, port)
 	}
 	actual := ln4.Addr().(*net.TCPAddr).Port
 	lns := []net.Listener{ln4}

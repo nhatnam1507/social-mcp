@@ -14,12 +14,15 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/nhatnam1507/social-mcp/internal/appauth"
 	"github.com/nhatnam1507/social-mcp/internal/oauth"
 	"github.com/nhatnam1507/social-mcp/internal/provider"
 )
 
 const (
-	scopes        = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly"
+	scopes = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly"
+	// TokenURL is Google's OAuth token endpoint.
+	TokenURL      = "https://oauth2.googleapis.com/token"
 	maxFileBytes  = 256 << 30
 	defaultChunk  = 8 << 20
 	chunkMultiple = 256 << 10
@@ -27,29 +30,28 @@ const (
 
 // Provider uploads to YouTube.
 type Provider struct {
-	ClientID     string
-	ClientSecret string
-	AuthBase     string
-	TokenURL     string
-	APIBase      string
-	UploadBase   string
-	ChunkSize    int64
-	HTTP         *http.Client
+	ClientID   string
+	Tokens     appauth.TokenEndpoint
+	AuthBase   string
+	APIBase    string
+	UploadBase string
+	ChunkSize  int64
+	HTTP       *http.Client
 }
 
 var _ provider.Provider = (*Provider)(nil)
 
-// New returns a provider for a Google OAuth desktop client.
-func New(clientID, clientSecret string) *Provider {
+// New returns a provider for a Google OAuth desktop client. tokens performs the code exchange and
+// refresh with the app's credentials.
+func New(clientID string, tokens appauth.TokenEndpoint) *Provider {
 	return &Provider{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		AuthBase:     "https://accounts.google.com/o/oauth2/v2/auth",
-		TokenURL:     "https://oauth2.googleapis.com/token",
-		APIBase:      "https://www.googleapis.com/youtube/v3",
-		UploadBase:   "https://www.googleapis.com/upload/youtube/v3",
-		ChunkSize:    defaultChunk,
-		HTTP:         &http.Client{Timeout: 10 * time.Minute},
+		ClientID:   clientID,
+		Tokens:     tokens,
+		AuthBase:   "https://accounts.google.com/o/oauth2/v2/auth",
+		APIBase:    "https://www.googleapis.com/youtube/v3",
+		UploadBase: "https://www.googleapis.com/upload/youtube/v3",
+		ChunkSize:  defaultChunk,
+		HTTP:       &http.Client{Timeout: 10 * time.Minute},
 	}
 }
 
@@ -104,14 +106,7 @@ func (p *Provider) Refresh(ctx context.Context, tok provider.Token) (provider.To
 }
 
 func (p *Provider) token(ctx context.Context, form url.Values) (provider.Token, error) {
-	form.Set("client_id", p.ClientID)
-	form.Set("client_secret", p.ClientSecret)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.TokenURL, strings.NewReader(form.Encode()))
-	if err != nil {
-		return provider.Token{}, err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := p.HTTP.Do(req)
+	resp, err := p.Tokens.Do(ctx, form)
 	if err != nil {
 		return provider.Token{}, err
 	}
@@ -122,6 +117,9 @@ func (p *Provider) token(ctx context.Context, form url.Values) (provider.Token, 
 	}
 	if tr.Error == "invalid_grant" {
 		return provider.Token{}, fmt.Errorf("%w: %s", provider.ErrReauthRequired, tr.Description)
+	}
+	if tr.Error == "invalid_client" {
+		return provider.Token{}, provider.AppCredentials("Google", tr.Error+" "+tr.Description)
 	}
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return provider.Token{}, &provider.RateLimitError{RetryAfter: provider.RetryAfter(resp.Header, time.Minute), Msg: tr.Description}
