@@ -74,3 +74,15 @@ func home() (string, error) {
 	}
 	return h, nil
 }
+
+// groupCmd returns a command that only groups subcommands. Run bare, it prints its help; with an unknown
+// subcommand it fails with "unknown command" instead of cobra's default of printing help and exiting 0, so
+// a typo or a removed subcommand (such as `config mcp`) is reported as an error.
+func groupCmd(use, short string) *cobra.Command {
+	return &cobra.Command{
+		Use:   use,
+		Short: short,
+		Args:  cobra.NoArgs,
+		RunE:  func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
+	}
+}

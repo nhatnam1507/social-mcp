@@ -31,7 +31,7 @@ var (
 )
 
 func accountCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "account", Short: "Connect and manage platform accounts"}
+	cmd := groupCmd("account", "Connect and manage platform accounts")
 	cmd.AddCommand(accountAddCmd(), accountListCmd(), accountRemoveCmd(), accountReauthCmd())
 	return cmd
 }

@@ -22,7 +22,7 @@ import (
 )
 
 func daemonCmd(version string) *cobra.Command {
-	cmd := &cobra.Command{Use: "daemon", Short: "Manage the background daemon"}
+	cmd := groupCmd("daemon", "Manage the background daemon")
 	cmd.AddCommand(daemonStartCmd(), daemonStopCmd(), daemonStatusCmd(), daemonLogsCmd(), daemonRunCmd(version))
 	return cmd
 }

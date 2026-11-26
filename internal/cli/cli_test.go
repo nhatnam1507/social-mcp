@@ -137,10 +137,16 @@ func TestConnectWithoutAppPrintsSetup(t *testing.T) {
 	}
 }
 
-func TestOldMCPCommandsRemoved(t *testing.T) {
-	for _, args := range [][]string{{"mcp"}, {"config", "mcp"}} {
+func TestUnknownSubcommandsFail(t *testing.T) {
+	// `mcp` and `config mcp` are the removed names of `relay` and plain `connect`.
+	for _, args := range [][]string{{"mcp"}, {"config", "mcp"}, {"daemon", "strat"}, {"account", "lst"}} {
 		if _, err := run(t, &stubService{}, args...); err == nil || !strings.Contains(err.Error(), "unknown command") {
 			t.Fatalf("%v: err = %v", args, err)
+		}
+	}
+	for _, group := range []string{"config", "daemon", "account"} {
+		if out, err := run(t, &stubService{}, group); err != nil || !strings.Contains(out, "Available Commands") {
+			t.Fatalf("bare %s: %v\n%s", group, err, out)
 		}
 	}
 }
