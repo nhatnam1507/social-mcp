@@ -63,8 +63,11 @@ build: ## Build ./social-mcp for this machine
 dist: ## Build every release target into dist/ without publishing
 	$(GORELEASER) release --snapshot --clean
 
-run: build | $(DEV_HOME)/config.toml ## Run the daemon in the foreground against ./.dev (ARGS="..." runs other commands)
-	$(DEV_ENV) $(BIN) $(ARGS)
+# `make run` loads ./.env (git-ignored; start from .env.example) into the environment, so the daemon signs
+# in through your own OAuth app via the SOCIAL_MCP_* override variables. No secret goes into the build.
+run: build | $(DEV_HOME)/config.toml ## Run the daemon in the foreground against ./.dev with ./.env (ARGS="..." runs other commands)
+	@set -a; if [ -f .env ]; then . ./.env; else echo "note: no .env, so only platforms set in your environment are available (see .env.example)"; fi; set +a; \
+	echo "$(DEV_ENV) $(BIN) $(ARGS)"; $(DEV_ENV) $(BIN) $(ARGS)
 
 $(DEV_HOME)/config.toml: | build
 	$(DEV_ENV) $(BIN) config init

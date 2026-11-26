@@ -30,9 +30,32 @@ jobs:
         with:
           go-version-file: go.mod
       - uses: ./.github/actions/setup-goreleaser
+      # Release binaries carry the maintainer's OAuth app identity (docs/maintainer-oauth-apps.md). Refuse
+      # to publish binaries users could not sign in with. Add a platform here once its app is registered.
+      - name: check the app identity secrets
+        env:
+          SOCIAL_MCP_YOUTUBE_CLIENT_ID: ${{ secrets.SOCIAL_MCP_YOUTUBE_CLIENT_ID }}
+          SOCIAL_MCP_YOUTUBE_CLIENT_SECRET: ${{ secrets.SOCIAL_MCP_YOUTUBE_CLIENT_SECRET }}
+        run: |
+          missing=""
+          for name in SOCIAL_MCP_YOUTUBE_CLIENT_ID SOCIAL_MCP_YOUTUBE_CLIENT_SECRET; do
+            if [ -z "$(printenv "$name")" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::missing repository secrets:$missing (Settings > Secrets and variables > Actions)"
+            exit 1
+          fi
       # The only direct GoReleaser call: publishing never goes through make, so it cannot run from a
       # developer machine by accident. .goreleaser.yaml defines the assets, notes and prerelease rule.
       - name: build and publish the release
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          SOCIAL_MCP_YOUTUBE_CLIENT_ID: ${{ secrets.SOCIAL_MCP_YOUTUBE_CLIENT_ID }}
+          SOCIAL_MCP_YOUTUBE_CLIENT_SECRET: ${{ secrets.SOCIAL_MCP_YOUTUBE_CLIENT_SECRET }}
+          SOCIAL_MCP_TIKTOK_CLIENT_KEY: ${{ secrets.SOCIAL_MCP_TIKTOK_CLIENT_KEY }}
+          SOCIAL_MCP_TIKTOK_CLIENT_SECRET: ${{ secrets.SOCIAL_MCP_TIKTOK_CLIENT_SECRET }}
+          SOCIAL_MCP_META_APP_ID: ${{ secrets.SOCIAL_MCP_META_APP_ID }}
+          SOCIAL_MCP_META_APP_SECRET: ${{ secrets.SOCIAL_MCP_META_APP_SECRET }}
+          SOCIAL_MCP_META_LOGIN_CONFIG_ID: ${{ secrets.SOCIAL_MCP_META_LOGIN_CONFIG_ID }}
+          SOCIAL_MCP_META_APP_MODE: ${{ secrets.SOCIAL_MCP_META_APP_MODE }}
         run: goreleaser release --clean

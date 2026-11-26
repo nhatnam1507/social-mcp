@@ -22,8 +22,19 @@ builds:
     flags:
       - -trimpath
     # Releases print the tag including its leading "v"; snapshots print the snapshot version.
+    # The app identity users sign in through comes from GitHub Actions secrets that release.yml passes
+    # as environment variables (see docs/maintainer-oauth-apps.md). `index .Env` yields "" when a variable
+    # is unset, so snapshot builds (`make dist`, CI) work without secrets and simply carry no identity.
     ldflags:
       - -s -w -X main.version={{ if .IsSnapshot }}{{ .Version }}{{ else }}{{ .Tag }}{{ end }}
+      - -X github.com/nhatnam1507/social-mcp/internal/appauth.youtubeClientID={{ index .Env "SOCIAL_MCP_YOUTUBE_CLIENT_ID" }}
+      - -X github.com/nhatnam1507/social-mcp/internal/appauth.youtubeClientSecret={{ index .Env "SOCIAL_MCP_YOUTUBE_CLIENT_SECRET" }}
+      - -X github.com/nhatnam1507/social-mcp/internal/appauth.tiktokClientKey={{ index .Env "SOCIAL_MCP_TIKTOK_CLIENT_KEY" }}
+      - -X github.com/nhatnam1507/social-mcp/internal/appauth.tiktokClientSecret={{ index .Env "SOCIAL_MCP_TIKTOK_CLIENT_SECRET" }}
+      - -X github.com/nhatnam1507/social-mcp/internal/appauth.metaAppID={{ index .Env "SOCIAL_MCP_META_APP_ID" }}
+      - -X github.com/nhatnam1507/social-mcp/internal/appauth.metaAppSecret={{ index .Env "SOCIAL_MCP_META_APP_SECRET" }}
+      - -X github.com/nhatnam1507/social-mcp/internal/appauth.metaLoginConfigID={{ index .Env "SOCIAL_MCP_META_LOGIN_CONFIG_ID" }}
+      - -X github.com/nhatnam1507/social-mcp/internal/appauth.metaAppMode={{ index .Env "SOCIAL_MCP_META_APP_MODE" }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
