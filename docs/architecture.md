@@ -5,8 +5,9 @@
 ```mermaid
 flowchart TD
   CLI["CLI (cobra)"] -->|JSON over AF_UNIX control socket| CTRL[control API]
-  STDIO["social-mcp relay (stdio)"] -->|control client| CTRL
-  AGENT[MCP client] -->|"Streamable HTTP, loopback + bearer"| MCPH[MCP handler]
+  APPS["AI app (Claude Desktop, Claude Code, ...)"] -->|"starts; MCP over stdio"| RELAY["social-mcp relay"]
+  RELAY -->|"control client; starts the daemon if needed"| CTRL
+  AGENT["MCP client (HTTP)"] -->|"Streamable HTTP, loopback + bearer"| MCPH[MCP handler]
   BROWSER[browser] -->|OAuth redirect| CB["/oauth/callback"]
   subgraph daemon
     CTRL --> SVC[service.Local]
@@ -27,11 +28,12 @@ flowchart TD
 Each package does one job:
 
 - **`internal/service`:** one `Service` interface backs the control API, the MCP tools in the daemon, and
-  stdio MCP mode (through `control.Client`), so the tools are written once.
-- **The relay (`social-mcp relay`, hidden from help; `mcp` is its alias from v0.2.0 and earlier):** the relay that every `connect` entry starts. Its `control.Client` uses
+  the relay (through `control.Client`), so the tools are written once.
+- **`internal/cli/relay.go` (`social-mcp relay`, hidden from help):** the command every `connect` entry
+  starts. It serves the MCP tools over stdio and forwards each call to the daemon. Its `control.Client` uses
   `AutoStart`: when nothing answers on the socket it starts the daemon (`daemon.Start`) and retries the
   request once. A failed dial means the request never reached the daemon, so the retry cannot submit an
-  upload twice. This is what lets an agent be registered once regardless of whether the daemon is running.
+  upload twice. This is what lets an app be connected once whether or not the daemon is running.
 - **`internal/cli/connect.go`, `settings.go` and `internal/wsl`:** `connect` holds one entry per supported
   app (where its settings live, how to write them, and what the user does next). JSON settings (Claude
   Desktop, Cursor, Antigravity) are edited key-order-preserving and Codex's TOML by replacing only the
@@ -89,7 +91,7 @@ How it works:
 ## Upload lifecycle
 
 1. **Submit:** `upload_video` validates the file (absolute path, optional `allowed_dirs`, video container
-   detection) and each account (health, privacy, format, size, options, metadata). It creates one job per
+   detection; inside WSL a Windows path such as `C:\Videos\a.mp4` is first converted with `wslpath`) and each account (health, privacy, format, size, options, metadata). It creates one job per
    accepted account, recording the file's size, modification time and fingerprint.
 2. **Run:** `uploads.max_concurrent` workers (default 2, at most 16) claim jobs atomically. TikTok and
    Instagram run one job per account at a time. Each attempt re-checks that the file is unchanged and reads it
@@ -127,7 +129,8 @@ How it works:
 - **Start:** the daemon takes an exclusive lock on `daemon.lock`, then binds the control socket and the
   loopback port. If the port is taken it exits with an error naming the port; it never picks another one.
   Only after that does it open the database and start the runner, so a failed start changes no job.
-- **Detach:** `daemon start` launches `daemon run --detached` in its own session. On Windows it starts
+- **Detach:** `daemon start` launches `daemon run --detached` in its own session. The relay starts the daemon
+  the same way when nothing answers on the control socket. On Windows it starts
   detached and breaks away from the terminal's job when allowed.
 - **Stop:** `daemon stop` asks the daemon to shut down, then waits for the lock to be released before
   reporting that it stopped.
