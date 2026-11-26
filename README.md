@@ -43,6 +43,11 @@ Accounts you connected through your own apps show `needs_reauth`. Run `social-mc
 YouTube, Facebook and Instagram. TikTok gives every app its own user IDs, so run
 `social-mcp account add tiktok` and then `social-mcp account remove <old-id>`.
 
+**Upgrading from v0.2.0 or earlier:** `config mcp` and `social-mcp mcp` are gone. Run
+`social-mcp connect <app>` once for each AI app; it replaces the old `social-mcp` entry. An app that still
+starts `social-mcp mcp` fails to connect until you do. Apps connected through the HTTP endpoint keep working
+while the daemon runs.
+
 **Using your own app:** a platform's `SOCIAL_MCP_*` variables replace the built-in app for the daemon, for
 example `SOCIAL_MCP_YOUTUBE_CLIENT_ID` and `SOCIAL_MCP_YOUTUBE_CLIENT_SECRET`. The full list and how to register
 an app are in [docs/maintainer-oauth-apps.md](docs/maintainer-oauth-apps.md). The daemon reads them when it
@@ -103,8 +108,7 @@ reads them under `/mnt/c/...`.
 (`--rotate-token` replaces the token). An HTTP connection works only when the daemon is already running as
 the app starts; most apps do not retry later (in Claude Code, `/mcp` then **Reconnect**). If you connected
 through HTTP or `mcp-remote` before, run `social-mcp connect <app>` (it replaces the old `social-mcp` entry)
-or replace the entry with the one `social-mcp connect` prints. The older `social-mcp config mcp` still works
-and prints the same as `social-mcp connect`.
+or replace the entry with the one `social-mcp connect` prints.
 
 Now ask your agent something like *"upload /home/me/Videos/launch.mp4 to my YouTube channel as unlisted"*.
 The agent calls `list_accounts`, then `upload_video`, which returns the queued job IDs straight away. Uploads keep running in the daemon; the agent checks `get_upload_status` or `list_uploads` only when you ask about progress or results.
@@ -157,9 +161,10 @@ publish twice.
 - The home directory is private to you. On Unix it must be owned by you and is kept at mode `0700`. On
   Windows it gets an access list that allows only your account, even when `SOCIAL_MCP_HOME` points outside
   your profile.
-- The CLI talks to the daemon over a local socket in the home directory. When that path would be too long for
-  the OS, the socket goes in a private per-user folder in the temp directory. On Unix the CLI refuses a socket
-  owned by another user. On Windows the folder name is derived from your account's SID.
+- The CLI and the relay (`social-mcp relay`, which your AI app starts) talk to the daemon over a local socket
+  in the home directory, so the relay needs no token. When that path would be too long for the OS, the socket
+  goes in a private per-user folder in the temp directory. On Unix the CLI and the relay refuse a socket owned
+  by another user. On Windows the folder name is derived from your account's SID.
 - On Windows, the access list is only applied when `SOCIAL_MCP_HOME` is a directory used only by social-mcp; a
   shared directory is left unchanged with a warning.
 - OAuth sign-in uses PKCE and a one-time `state`, and the platform redirects only to the loopback callback on

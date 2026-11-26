@@ -131,7 +131,7 @@ func (c Config) RetiredWarning() string {
 	msg := "config.toml settings no longer used and ignored: " + strings.Join(c.Retired, ", ") +
 		". social-mcp now ships its own app for each platform; you can delete these lines."
 	if c.LegacyListenPort != 0 && c.LegacyListenPort != DefaultListenPort {
-		msg += fmt.Sprintf(" The listener now always uses port %d, not %d: run `social-mcp config mcp` and update your MCP client.",
+		msg += fmt.Sprintf(" The listener now always uses port %d, not %d: run `social-mcp connect <app>` again for apps that connect over HTTP.",
 			DefaultListenPort, c.LegacyListenPort)
 	}
 	return msg
