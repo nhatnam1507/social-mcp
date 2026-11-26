@@ -96,6 +96,15 @@ function Install-SocialMcp {
         Write-Host "installed social-mcp $installed to $target"
         if ($upgrade) {
             Write-Host 'A running daemon keeps the old version until you restart it: social-mcp daemon stop; social-mcp daemon start'
+        } else {
+            Write-Host ''
+            Write-Host 'Next steps:'
+            Write-Host '  1. Start social-mcp:        social-mcp daemon start'
+            Write-Host '  2. Sign in to an account:   social-mcp account add youtube   (or tiktok, facebook, instagram)'
+            Write-Host '  3. Connect your AI app:     social-mcp connect claude-desktop'
+            Write-Host '     (or: claude-code, cursor, codex, antigravity)'
+            Write-Host "     Other AI apps: run 'social-mcp connect' for the settings to paste,"
+            Write-Host "     or ask your AI agent to run 'social-mcp connect' and connect social-mcp for you."
         }
     } finally {
         Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue

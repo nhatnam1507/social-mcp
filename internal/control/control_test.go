@@ -124,3 +124,38 @@ func TestClientReportsDaemonNotRunning(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestClientAutoStartRetriesOnce(t *testing.T) {
+	dir, err := os.MkdirTemp("", "sm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	sock := filepath.Join(dir, "c.sock")
+	fake := &fakeService{}
+	var srv *http.Server
+	starts := 0
+	c := NewClient(sock).AutoStart(func() error {
+		starts++
+		ln, err := net.Listen("unix", sock)
+		if err != nil {
+			return err
+		}
+		srv = &http.Server{Handler: NewHandler(fake, func() {})}
+		go srv.Serve(ln)
+		return nil
+	})
+	sub, err := c.SubmitUpload(service.UploadInput{FilePath: "/v.mp4", AccountIDs: []string{"acc_1"}})
+	if err != nil || len(sub.Jobs) != 1 || fake.lastInput.FilePath != "/v.mp4" {
+		t.Fatalf("upload after auto-start: %+v %v (input %+v)", sub, err, fake.lastInput)
+	}
+	defer srv.Close()
+	if _, err := c.Status(); err != nil || starts != 1 {
+		t.Fatalf("status = %v, starts = %d", err, starts)
+	}
+
+	failing := NewClient(filepath.Join(dir, "none.sock")).AutoStart(func() error { return errors.New("cannot start") })
+	if _, err := failing.Status(); err == nil || err.Error() != "cannot start" {
+		t.Fatalf("start failure = %v", err)
+	}
+}

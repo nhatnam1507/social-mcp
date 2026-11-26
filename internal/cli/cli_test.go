@@ -120,13 +120,36 @@ func TestAccountAddPrintsURLAndWaits(t *testing.T) {
 	}
 }
 
-func TestConfigMCPPrintsSnippet(t *testing.T) {
-	out, err := run(t, &stubService{}, "config", "mcp")
+func TestConnectWithoutAppPrintsSetup(t *testing.T) {
+	// `config mcp` is the older, hidden name for the same output.
+	for _, args := range [][]string{{"connect"}, {"config", "mcp"}} {
+		out, err := run(t, &stubService{}, args...)
+		if err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		for _, want := range []string{
+			"social-mcp connect claude-desktop",
+			"social-mcp connect antigravity",
+			`"args":["relay"]`,
+			"claude mcp add --transport http social-mcp http://127.0.0.1:8765/mcp",
+		} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("%v output lacks %q:\n%s", args, want, out)
+			}
+		}
+	}
+}
+
+func TestHelpShowsOnlyConnect(t *testing.T) {
+	out, err := run(t, &stubService{}, "--help")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "claude mcp add --transport http social-mcp http://127.0.0.1:8765/mcp") || !strings.Contains(out, `"args": ["mcp"]`) {
-		t.Fatalf("output %q", out)
+	if !strings.Contains(out, "connect") || strings.Contains(out, "\n  mcp ") {
+		t.Fatalf("root help:\n%s", out)
+	}
+	if out, _ := run(t, &stubService{}, "config", "--help"); strings.Contains(out, "\n  mcp ") {
+		t.Fatalf("config help lists mcp:\n%s", out)
 	}
 }
 

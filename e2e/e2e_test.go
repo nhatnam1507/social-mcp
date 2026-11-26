@@ -164,7 +164,7 @@ func TestEndToEnd(t *testing.T) {
 		t.Fatalf("foreign host: %v %v", resp, err)
 	}
 
-	// stdio mode backed by the daemon.
+	// The relay under its v0.2.0 name, which apps connected then still start.
 	cmd := exec.Command(e.bin, "mcp")
 	cmd.Env = e.environ()
 	stdio, err := mcp.NewClient(&mcp.Implementation{Name: "e2e-stdio"}, nil).Connect(context.Background(), &mcp.CommandTransport{Command: cmd}, nil)
@@ -183,6 +183,37 @@ func TestEndToEnd(t *testing.T) {
 	if out, code := e.run("daemon", "status"); code != 3 {
 		t.Fatalf("status after stop (%d): %s", code, out)
 	}
+	// A registered stdio server starts the daemon itself, so the agent never needs re-registering.
+	cmd = exec.Command(e.bin, "relay")
+	cmd.Env = e.environ()
+	stdio, err = mcp.NewClient(&mcp.Implementation{Name: "e2e-stdio"}, nil).Connect(context.Background(), &mcp.CommandTransport{Command: cmd}, nil)
+	if err != nil {
+		t.Fatalf("connect over stdio with the daemon stopped: %v", err)
+	}
+	if tools, err := stdio.ListTools(context.Background(), nil); err != nil || len(tools.Tools) != 5 {
+		t.Fatalf("stdio tools after auto-start: %v %v", tools, err)
+	}
+	if out, code := e.run("daemon", "status"); code != 0 {
+		t.Fatalf("status after stdio auto-start (%d): %s", code, out)
+	}
+	if out, code := e.run("daemon", "stop"); code != 0 {
+		t.Fatalf("stop under a live stdio session (%d): %s", code, out)
+	}
+	// The daemon stopped mid-session: the next tool call starts it again.
+	if tools, err := stdio.ListTools(context.Background(), nil); err != nil || len(tools.Tools) != 5 {
+		t.Fatalf("stdio tools after daemon stop: %v %v", tools, err)
+	}
+	if out, isErr := callText(t, stdio, "list_accounts", map[string]any{}); isErr {
+		t.Fatalf("list_accounts after daemon stop: %s", out)
+	}
+	stdio.Close()
+	if out, code := e.run("daemon", "status"); code != 0 {
+		t.Fatalf("status after mid-session restart (%d): %s", code, out)
+	}
+	if out, code := e.run("daemon", "stop"); code != 0 {
+		t.Fatalf("stop (%d): %s", code, out)
+	}
+
 	if out, code := e.run("daemon", "start"); code != 0 {
 		t.Fatalf("restart (%d): %s", code, out)
 	}

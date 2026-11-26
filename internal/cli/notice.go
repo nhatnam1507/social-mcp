@@ -13,10 +13,10 @@ import (
 	"github.com/nhatnam1507/social-mcp/internal/update"
 )
 
-// noNoticeCommands never print the update notice: `mcp` speaks a protocol on stdio, `daemon run` is for
+// noNoticeCommands never print the update notice: `relay` speaks a protocol on stdio, `daemon run` is for
 // service managers, and `update` and `version` already deal with versions.
 var noNoticeCommands = map[string]bool{
-	"social-mcp mcp":        true,
+	"social-mcp relay":      true,
 	"social-mcp daemon run": true,
 	"social-mcp update":     true,
 	"social-mcp version":    true,
