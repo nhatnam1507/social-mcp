@@ -19,6 +19,7 @@ flowchart TD
     TOK --> STORE
     RUN --> PROV[providers]
     TOK --> PROV
+    PROV --> APP[appauth]
   end
   PROV --> YT[YouTube] & TT[TikTok] & FB[Facebook] & IG[Instagram]
 ```
@@ -27,6 +28,9 @@ Each package does one job:
 
 - **`internal/service`:** one `Service` interface backs the control API, the MCP tools in the daemon, and
   stdio MCP mode (through `control.Client`), so the tools are written once.
+- **`internal/appauth`:** the OAuth app identity per platform (embedded in release builds, or `SOCIAL_MCP_*`
+  overrides) and the only code that uses app secrets: `TokenEndpoint` performs code exchanges, refreshes and
+  Meta's long-lived swap, so a hosted broker could replace it without changing the providers.
 - **`internal/provider`:** the platform contract. The `youtube`, `tiktok`, `facebook` and `instagram`
   packages implement it, with `meta` shared by the last two. `internal/daemon/providers.go` is the only file
   that imports platform packages.
@@ -42,7 +46,7 @@ Everything lives in the home directory (`SOCIAL_MCP_HOME`, or your user config d
 
 | File | Purpose |
 |---|---|
-| `config.toml` | Settings and platform app credentials |
+| `config.toml` | Upload and update-check settings |
 | `social-mcp.db` | SQLite: credentials, accounts, upload jobs, metadata |
 | `master.key` | Encryption key, only when the OS keyring is not used |
 | `mcp-token` | Bearer token for the MCP endpoint |
@@ -61,6 +65,9 @@ How it works:
   channel ID, a TikTok `open_id`, or a Facebook user ID. An *account* is one place to publish (a channel,
   TikTok user, Page or Instagram account) and points to its credential. Facebook Pages also carry their own
   Page token.
+- **Issuing app:** each credential records the client ID of the OAuth app that issued it. At startup the
+  daemon flags credentials from any other app, and their accounts, as `needs_reauth`, because the current app
+  cannot refresh or use those tokens.
 - **Account health:**
   - `needs_reauth` when the account, or the credential it depends on, is flagged.
   - Otherwise it depends on a deadline: the account token's expiry when the account has its own token,
